@@ -53,6 +53,7 @@ void loop() {
             }
         break;
         case KWP_REQUEST_GROUP_READING:
+        {
             uint8_t group_selected = buff[3];
             //Serial.print("-> GROUP_READING Group: ");
             //Serial.println(group_selected);
@@ -61,6 +62,7 @@ void loop() {
                 reset();
                 return;
             }
+        }
         break;
         case KWP_REQUEST_FAULT_CODES:
             Serial.println("-> FAULT_CODES");

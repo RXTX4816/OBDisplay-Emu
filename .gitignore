@@ -1,4 +1,11 @@
-.vscode/*
+.vscode/
+.pio/
 
-.pio/*
+.DS_Store
+*.swp
+*.swo
+*.tmp
+
+__pycache__/
+*.pyc
 

@@ -7,7 +7,26 @@
 #define ADDR 0x17
 #define BAUDRATE 10400
 
-#define TIMEOUT 500 // 1300
+#define TIMEOUT 1300
+
+// Some diagnostic clients expect different physical-layer behavior.
+// - On real K-line, the *tester* often sees an electrical echo of its own TX.
+//   When using separate RX/TX wires, that echo is usually not present.
+//   Keep this configurable.
+#ifndef KWP_EMU_ECHO_RX_BYTES
+#define KWP_EMU_ECHO_RX_BYTES 0
+#endif
+
+#ifndef KWP_EMU_INTERBYTE_DELAY_MS
+#define KWP_EMU_INTERBYTE_DELAY_MS 5
+#endif
+
+// Some clients send a complement after the last byte too; others don't.
+// If enabled, we will consume it only if it matches the expected complement.
+#ifndef KWP_EMU_CONSUME_OPTIONAL_LAST_COMPLEMENT
+#define KWP_EMU_CONSUME_OPTIONAL_LAST_COMPLEMENT 1
+#endif
+
 
 ///VARIABLES/TYPES
 static const uint8_t KWP_ACKNOWLEDGE             = 0x09; // the module has no more data to send
@@ -56,15 +75,17 @@ int16_t OBD_read()
   {
     if (millis() >= timeout)
     {
-      Serial.println("ERROR: OBD_read() timeout 500 ms");
+            Serial.println("ERROR: OBD_read() timeout");
       return -1;
     }
   }
   int16_t data = Serial1.read();
- // Serial.print("--> ");
-  //Serial.println(data, HEX);
-  // ECHO
-  Serial1.write(data);
+
+#if KWP_EMU_ECHO_RX_BYTES
+    // Optional: mimic "echo" some K-line setups exhibit.
+    Serial1.write((uint8_t)data);
+#endif
+
   return data;
 }
 
@@ -75,8 +96,20 @@ int16_t OBD_read()
  */
 void OBD_write(uint8_t data)
 {
-  delay(10);
+    delay(KWP_EMU_INTERBYTE_DELAY_MS);
   Serial1.write(data);
+}
+
+static inline void OBD_consume_if_next_byte_is(uint8_t expected)
+{
+#if KWP_EMU_CONSUME_OPTIONAL_LAST_COMPLEMENT
+    if (Serial1.available() && Serial1.peek() == expected)
+    {
+        (void)Serial1.read();
+    }
+#else
+    (void)expected;
+#endif
 }
 
 /**
@@ -111,6 +144,9 @@ bool KWP_send_block(uint8_t *s, int size)
             Serial.println(data ^ 0xFF, HEX);
             return false;
         }
+        } else {
+                // Some clients also send a complement for the final byte.
+                OBD_consume_if_next_byte_is(data ^ 0xFF);
     }
   }
   block_counter++;
@@ -211,6 +247,8 @@ bool KWP_send_group_reading(uint8_t group) {
             return (KWP_send_block(buf, 16));
         break;
     }
+
+    return false;
 }
 
 bool KWP_send_fault_codes() {
@@ -318,10 +356,15 @@ bool wait_5baud() {
     }
     Serial.println("waiting 10400 baud 0x17 addr PIN_RX_19 ...");
     g.print("Waiting 5baud..", LEFT, rows[4]);
+    const unsigned long start_timeout_ms = 10000;
+    unsigned long start_timeout_at = millis() + start_timeout_ms;
     bool ready = false;
     while (!ready) {
         if (digitalRead(PIN_RX) == LOW) {
             ready = true;
+        }
+        if (millis() >= start_timeout_at) {
+            return false;
         }
     }
     const int timeout_temp_bug = 3000;
@@ -339,7 +382,8 @@ bool wait_5baud() {
     bool bits[10];
     bits[0] = LOW;
     Serial.print(bits[0]);
-    delay(200);
+    // 5 baud = 200ms/bit. Wait 1.5 bits so we sample the first data bit mid-bit.
+    delay(300);
     for (uint8_t i = 1; i < sizeof(bits); i++)
     {
         bits[i] = digitalRead(PIN_RX);
@@ -369,61 +413,49 @@ bool wait_5baud() {
 
 bool KWP_receive_block(uint8_t buff[], uint8_t &received_count, uint8_t &message_type) {
     uint8_t recvcount = 0;
+    uint8_t expected_total = 0; // total bytes including length byte
     unsigned long timeout = millis() + TIMEOUT;
 
-    bool received_message_end = false;
-    while (!received_message_end) {
+    while (true) {
         while (Serial1.available()) {
-            uint8_t data = OBD_read();
-            if (data == -1) {
+            int16_t raw = OBD_read();
+            if (raw < 0) {
                 Serial.println("data = -1");
+                return false;
+            }
+            uint8_t data = (uint8_t)raw;
+
+            if (recvcount >= 32) {
+                Serial.println("receive block error: buffer overflow");
                 return false;
             }
             buff[recvcount] = data;
             recvcount++;
 
-            switch(recvcount) {
-                case 0:
-                    Serial.println("recv 0 should not happen!!");
-                    break;
-                case 1:
-                    if (data < 3 || data > 12) {
-                        Serial.print("WARNING: very long message ahead");
-                    }
-                    //Serial.print("message length: ");
-                    //Serial.println(data, HEX);
-                break;
-                case 2:
-                    if (data != block_counter) {
-                        Serial.print("WARNING: block counter does not match");
-                    }
-                break;
-                case 3:
-                    message_type = data;
-                    //Serial.print("message type: ");
-                    //Serial.println(data, HEX);
-                break;
-                default:
-                    if (data == 0x03) {
-                        if ((message_type == KWP_REQUEST_GROUP_READING && recvcount > 4) // Group reading
-                                || (message_type == KWP_REQUEST_FAULT_CODES && recvcount > 3) // fault codes
-                                || (message_type != KWP_REQUEST_GROUP_READING && message_type != KWP_REQUEST_FAULT_CODES)  // Default
-                            ) {
-                            received_message_end = true;
-                            received_count = recvcount;
-                            block_counter++;
-                            return true;
-                        }
-                    }
-                    
-                break;
+            if (recvcount == 1) {
+                expected_total = (uint8_t)(data + 1);
+                if (expected_total < 4 || expected_total > 32) {
+                    Serial.println("receive block error: invalid length");
+                    return false;
+                }
+            } else if (recvcount == 2) {
+                if (data != block_counter) {
+                    Serial.println("WARNING: block counter does not match");
+                }
+            } else if (recvcount == 3) {
+                message_type = data;
             }
-            
+
             OBD_write(data ^ 0xFF); // send complement ack
             timeout = millis() + TIMEOUT;
 
+            if (expected_total != 0 && recvcount >= expected_total) {
+                received_count = recvcount;
+                block_counter++;
+                return true;
+            }
         }
-        
+
         if (millis() >= timeout)
         {
             Serial.print("Timeout - recvcount = ");
@@ -432,10 +464,6 @@ bool KWP_receive_block(uint8_t buff[], uint8_t &received_count, uint8_t &message
             return false;
         }
     }
-    
-    received_count = recvcount;
-    block_counter++;
-    return true;
 }
 
 void reset() {

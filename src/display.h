@@ -48,8 +48,8 @@ void increment_col_print() {
 }
 
 void print_message_type(uint8_t message_type) {
-    char received_message_type[2];
-    sprintf(received_message_type, "%02X", message_type);
+    char received_message_type[3];
+    snprintf(received_message_type, sizeof(received_message_type), "%02X", message_type);
     _current_message_type = received_message_type;
     // Recolor old value
     if (!_last_message_type.equals("00")) {
