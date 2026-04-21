@@ -30,3 +30,7 @@ jobs:
 
       - name: Build firmware
         run: pio run
+
+      - name: Lint (cppcheck, report-only)
+        continue-on-error: true
+        run: pio check -e ATmega2560
