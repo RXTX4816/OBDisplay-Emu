@@ -41,9 +41,8 @@ jobs:
       - name: Install PlatformIO
         run: pip install -U platformio
 
+      - name: Lint (cppcheck, fail on high)
+        run: pio check -e ATmega2560 --fail-on-defect high
+
       - name: Build firmware
         run: pio run
-
-      - name: Lint (cppcheck, report-only)
-        continue-on-error: true
-        run: pio check -e ATmega2560
