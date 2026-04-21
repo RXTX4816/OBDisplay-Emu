@@ -12,7 +12,7 @@ const byte max_chars_per_row_bigfont = 30; // = maximum 1560 characters with sma
 extern uint8_t SmallFont[];
 extern uint8_t BigFont[];
 extern uint8_t SevenSegNumFont[]; // Declare which fonts we will be using
-UTFT g(CTE40, 38, 39, 40, 41); // Graphics g
+UTFT g(CTE40, 38, 39, 40, 41);    // Graphics g
 word back_color = TFT_BLACK;
 word font_color = TFT_CYAN;
 
@@ -28,17 +28,16 @@ uint8_t _col_print_received_last = _col_print_received;
 String _current_message_type = "00";
 String _last_message_type = "00";
 void increment_row_print() {
-        _row_print_received_last = _row_print_received;
+    _row_print_received_last = _row_print_received;
     if (_row_print_received >= 10) {
         _row_print_received = 9;
-    }
-    else {
+    } else {
         _row_print_received++;
     }
 }
 void increment_col_print() {
-     _col_print_received_last = _col_print_received;
-    if (_col_print_received >= 27) { 
+    _col_print_received_last = _col_print_received;
+    if (_col_print_received >= 27) {
         _col_print_received = 0;
         increment_row_print();
     } else {
@@ -56,25 +55,20 @@ void print_message_type(uint8_t message_type) {
         g.setColor(color_hide);
         if (_col_print_received > 0)
             g.print(_last_message_type, cols[_col_print_received_last], rows[_row_print_received]);
-        else 
+        else
             g.print(_last_message_type, cols[_col_print_received_last], rows[_row_print_received_last]);
-        
     }
 
     g.setColor(color_focus);
     // Print current value
     g.print(_current_message_type, cols[_col_print_received], rows[_row_print_received]);
 
-
-    
     _last_message_type = _current_message_type;
     g.setColor(font_color);
     increment_col_print();
-
 }
 
-void clearRow(byte row)
-{
+void clearRow(byte row) {
     g.setColor(back_color);
     g.print(String("                              "), LEFT, rows[row]);
     g.setColor(font_color);
@@ -119,8 +113,7 @@ void display_status_bar(uint8_t block_counter, bool awake, bool connected) {
     }
 }
 
-void startup_animation()
-{
+void startup_animation() {
     g.fillScr(back_color);
     // for(int i = 0; i<20;i++) {
     //     g.print("OBDisplay", CENTER, rows[i]);
@@ -146,10 +139,8 @@ void startup_animation()
     g.print("Version Alpha", CENTER, rows[6]);
     g.setFont(BigFont);
     g.drawRect(4 + 2, rows[17], 474, rows[17] + 12);
-    for (int i = 0; i < 8; i++)
-    {
-        for (int j = 0; j < 59; j++)
-        {
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 59; j++) {
             if ((i == 0 && j < 2) || (i == 7 && j >= 57))
                 continue;
             g.drawLine(4 + i * 59 + j, rows[17], 4 + i * 59 + j + 1, rows[17] + 12);
@@ -170,7 +161,6 @@ void startup_animation()
     g.setColor(font_color);
 }
 
-
 void init_display() {
     g.InitLCD(LANDSCAPE);
     g.clrScr();
@@ -181,7 +171,6 @@ void init_display() {
     startup_animation();
     init_status_bar();
 }
-
 
 void reset_display() {
     _col_print_received = _COL_PRINT_RECEIVED_DEFAULT;
