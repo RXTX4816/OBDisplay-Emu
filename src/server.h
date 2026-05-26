@@ -7,7 +7,7 @@
 #define ADDR 0x17
 #define BAUDRATE 10400
 
-#define TIMEOUT 1300
+#define TIMEOUT 1250
 
 // Some diagnostic clients expect different physical-layer behavior.
 // - On real K-line, the *tester* often sees an electrical echo of its own TX.
@@ -32,24 +32,44 @@ static const uint8_t KWP_ACKNOWLEDGE = 0x09; // the module has no more data to s
 static const uint8_t KWP_REFUSE = 0x0A;      // the module can not fulfill a request
 static const uint8_t KWP_DISCONNECT = 0x06;  // the tester wants to disconnect from the module
 
-static const uint8_t KWP_REQUEST_EXTRA_ID = 0x00;        // response: KWP_RECEIVE_ID_DATA (data available) / KWP_ACKNOWLEDGE (no data available)
-static const uint8_t KWP_REQUEST_LOGIN = 0x2B;           // response: KWP_ACKNOWLEDGE (login successful) / KWP_REFUSE (login not successful)
-static const uint8_t KWP_REQUEST_RECODE = 0x10;          // response: KWP_REQUEST_EXTRA_ID...
-static const uint8_t KWP_REQUEST_FAULT_CODES = 0x07;     // response: KWP_RECEIVE_FAULT_CODES (ok) / KWP_REFUSE (fault codes not supported)
-static const uint8_t KWP_REQUEST_CLEAR_FAULTS = 0x05;    // response: KWP_ACKNOWLEDGE (ok) / KWP_REFUSE (clearing fault codes not supported)
-static const uint8_t KWP_REQUEST_ADAPTATION = 0x21;      // response: KWP_RECEIVE_ADAPTATION (ok) / KWP_REFUSE (invalid channel)
-static const uint8_t KWP_REQUEST_ADAPTATION_TEST = 0x22; // response: KWP_RECEIVE_ADAPTATION (ok) / KWP_REFUSE (invalid channel)
-static const uint8_t KWP_REQUEST_ADAPTATION_SAVE = 0x2A; // response: KWP_RECEIVE_ADAPTATION (ok) / KWP_REFUSE (invalid channel or value)
-static const uint8_t KWP_REQUEST_GROUP_READING = 0x29;   // response: KWP_RECEIVE_GROUP_READING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE (invalid group)
-static const uint8_t KWP_REQUEST_GROUP_READING_0 = 0x12; // response: KWP_RECEIVE_GROUP_READING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE (invalid group)
-static const uint8_t KWP_REQUEST_READ_ROM = 0x03;        // response: KWP_RECEIVE_ROM (ok) / KWP_REFUSE (reading ROM not supported or invalid parameters)
-static const uint8_t KWP_REQUEST_OUTPUT_TEST = 0x04;     // response: KWP_RECEIVE_OUTPUT_TEST (ok) / KWP_REFUSE (output tests not supported)
-static const uint8_t KWP_REQUEST_BASIC_SETTING = 0x28;   // response: KWP_RECEIVE_BASIC_SETTING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE (invalid channel or not supported)
-static const uint8_t KWP_REQUEST_BASIC_SETTING_0 = 0x11; // response: KWP_RECEIVE_BASIC_SETTING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE (invalid channel or not supported)
+static const uint8_t KWP_REQUEST_EXTRA_ID =
+    0x00; // response: KWP_RECEIVE_ID_DATA (data available) / KWP_ACKNOWLEDGE (no data available)
+static const uint8_t KWP_REQUEST_LOGIN =
+    0x2B; // response: KWP_ACKNOWLEDGE (login successful) / KWP_REFUSE (login not successful)
+static const uint8_t KWP_REQUEST_RECODE = 0x10; // response: KWP_REQUEST_EXTRA_ID...
+static const uint8_t KWP_REQUEST_FAULT_CODES =
+    0x07; // response: KWP_RECEIVE_FAULT_CODES (ok) / KWP_REFUSE (fault codes not supported)
+static const uint8_t KWP_REQUEST_CLEAR_FAULTS =
+    0x05; // response: KWP_ACKNOWLEDGE (ok) / KWP_REFUSE (clearing fault codes not supported)
+static const uint8_t KWP_REQUEST_ADAPTATION =
+    0x21; // response: KWP_RECEIVE_ADAPTATION (ok) / KWP_REFUSE (invalid channel)
+static const uint8_t KWP_REQUEST_ADAPTATION_TEST =
+    0x22; // response: KWP_RECEIVE_ADAPTATION (ok) / KWP_REFUSE (invalid channel)
+static const uint8_t KWP_REQUEST_ADAPTATION_SAVE =
+    0x2A; // response: KWP_RECEIVE_ADAPTATION (ok) / KWP_REFUSE (invalid channel or value)
+static const uint8_t KWP_REQUEST_GROUP_READING =
+    0x29; // response: KWP_RECEIVE_GROUP_READING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE
+          // (invalid group)
+static const uint8_t KWP_REQUEST_GROUP_READING_0 =
+    0x12; // response: KWP_RECEIVE_GROUP_READING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE
+          // (invalid group)
+static const uint8_t KWP_REQUEST_READ_ROM =
+    0x03; // response: KWP_RECEIVE_ROM (ok) / KWP_REFUSE (reading ROM not supported or invalid
+          // parameters)
+static const uint8_t KWP_REQUEST_OUTPUT_TEST =
+    0x04; // response: KWP_RECEIVE_OUTPUT_TEST (ok) / KWP_REFUSE (output tests not supported)
+static const uint8_t KWP_REQUEST_BASIC_SETTING =
+    0x28; // response: KWP_RECEIVE_BASIC_SETTING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE
+          // (invalid channel or not supported)
+static const uint8_t KWP_REQUEST_BASIC_SETTING_0 =
+    0x11; // response: KWP_RECEIVE_BASIC_SETTING (ok) / KWP_ACKNOWLEDGE (empty group) / KWP_REFUSE
+          // (invalid channel or not supported)
 
-static const uint8_t KWP_RECEIVE_ID_DATA = 0xF6;       // request: connect/KWP_REQUEST_EXTRA_ID/KWP_REQUEST_RECODE
-static const uint8_t KWP_RECEIVE_FAULT_CODES = 0xFC;   // request: KWP_REQUEST_FAULT_CODES
-static const uint8_t KWP_RECEIVE_ADAPTATION = 0xE6;    // request: KWP_REQUEST_ADAPTATION/KWP_REQUEST_ADAPTATION_TEST/KWP_REQUEST_ADAPTATION_SAVE
+static const uint8_t KWP_RECEIVE_ID_DATA =
+    0xF6; // request: connect/KWP_REQUEST_EXTRA_ID/KWP_REQUEST_RECODE
+static const uint8_t KWP_RECEIVE_FAULT_CODES = 0xFC; // request: KWP_REQUEST_FAULT_CODES
+static const uint8_t KWP_RECEIVE_ADAPTATION =
+    0xE6; // request: KWP_REQUEST_ADAPTATION/KWP_REQUEST_ADAPTATION_TEST/KWP_REQUEST_ADAPTATION_SAVE
 static const uint8_t KWP_RECEIVE_GROUP_READING = 0xE7; // request: KWP_REQUEST_GROUP_READING
 static const uint8_t KWP_RECEIVE_ROM = 0xFD;           // request: KWP_REQUEST_READ_ROM
 static const uint8_t KWP_RECEIVE_OUTPUT_TEST = 0xF5;   // request: KWP_REQUEST_OUTPUT_TEST
@@ -66,10 +86,13 @@ uint8_t block_counter = 0;
  *
  * @return uint8_t The incoming byte or -1 if timeout
  */
-int16_t OBD_read() {
+int16_t OBD_read()
+{
     unsigned long timeout = millis() + TIMEOUT;
-    while (!Serial1.available()) {
-        if (millis() >= timeout) {
+    while (!Serial1.available())
+    {
+        if (millis() >= timeout)
+        {
             Serial.println("ERROR: OBD_read() timeout");
             return -1;
         }
@@ -89,14 +112,17 @@ int16_t OBD_read() {
  *
  * @param data The data to send.
  */
-void OBD_write(uint8_t data) {
+void OBD_write(uint8_t data)
+{
     delay(KWP_EMU_INTERBYTE_DELAY_MS);
     Serial1.write(data);
 }
 
-static inline void OBD_consume_if_next_byte_is(uint8_t expected) {
+static inline void OBD_consume_if_next_byte_is(uint8_t expected)
+{
 #if KWP_EMU_CONSUME_OPTIONAL_LAST_COMPLEMENT
-    if (Serial1.available() && Serial1.peek() == expected) {
+    if (Serial1.available() && Serial1.peek() == expected)
+    {
         (void)Serial1.read();
     }
 #else
@@ -112,29 +138,43 @@ static inline void OBD_consume_if_next_byte_is(uint8_t expected) {
  * @return true If no errors occured, will resume
  * @return false If errors occured, will disconnect
  */
-bool KWP_send_block(uint8_t *s, int size) {
-    // Serial.print("Sending ");
-    // for (uint8_t i = 0; i < size; i++)
-    //{
-    //     Serial.print(s[i], HEX);
-    //     Serial.print(" ");
-    // }
-    // Serial.println();
+bool KWP_send_block(uint8_t* s, int size)
+{
+    Serial.print("TX [BC=");
+    Serial.print(block_counter);
+    Serial.print("]: ");
+    for (uint8_t i = 0; i < size; i++)
+    {
+        if (s[i] < 0x10)
+            Serial.print("0");
+        Serial.print(s[i], HEX);
+        Serial.print(" ");
+    }
+    Serial.println();
 
-    for (uint8_t i = 0; i < size; i++) {
+    for (uint8_t i = 0; i < size; i++)
+    {
         uint8_t data = s[i];
         OBD_write(data);
 
-        if (i < size - 1) {
+        if (i < size - 1)
+        {
             int16_t complement = OBD_read();
-            if (complement != (data ^ 0xFF)) {
-                Serial.print("Received: ");
+            if (complement != (data ^ 0xFF))
+            {
+                Serial.print("  complement error byte[");
+                Serial.print(i);
+                Serial.print("]=");
+                Serial.print(data, HEX);
+                Serial.print(" got=");
                 Serial.print(complement, HEX);
-                Serial.print(" Expected: ");
+                Serial.print(" want=");
                 Serial.println(data ^ 0xFF, HEX);
                 return false;
             }
-        } else {
+        }
+        else
+        {
             // Some clients also send a complement for the final byte.
             OBD_consume_if_next_byte_is(data ^ 0xFF);
         }
@@ -143,23 +183,28 @@ bool KWP_send_block(uint8_t *s, int size) {
     return true;
 }
 
-bool KWP_send_syncbytes() {
+bool KWP_send_syncbytes()
+{
     uint8_t s[32] = {0x55, 0x01, 0x8A};
     uint8_t size = 3;
     Serial.print("Sending ");
-    for (uint8_t i = 0; i < size; i++) {
+    for (uint8_t i = 0; i < size; i++)
+    {
         Serial.print(s[i], HEX);
         Serial.print(" ");
     }
     Serial.println();
 
-    for (uint8_t i = 0; i < size; i++) {
+    for (uint8_t i = 0; i < size; i++)
+    {
         uint8_t data = s[i];
         OBD_write(data);
 
-        if (i == 2) {
+        if (i == 2)
+        {
             int16_t complement = OBD_read();
-            if (complement != (data ^ 0xFF)) {
+            if (complement != (data ^ 0xFF))
+            {
                 Serial.print("Received: ");
                 Serial.print(complement, HEX);
                 Serial.print(" Expected: ");
@@ -181,69 +226,88 @@ uint8_t fuel_b = 40;
 uint8_t odo_a = 160;
 uint8_t odo_b = 3;
 long iteration = 0;
-bool KWP_send_group_reading(uint8_t group) {
-    uint8_t buf[16] = {0x0F, block_counter, KWP_RECEIVE_GROUP_READING, 0x07, kmh_a, kmh_b, 0x01, rpm_a, rpm_b, 0x25, 0x00, 0x01, 0x2C, 0x0A, 0x11, 0x03};
-    switch (group) {
-    case 1:
-        rpm_b++;
-        kmh_b++;
-        return (KWP_send_block(buf, 16));
-    case 2: // 0x24 0x13 0x0C 0x05 // oil temp
-        buf[3] = 0x24;
-        buf[4] = odo_a;
-        buf[5] = odo_b;
+bool KWP_send_group_reading(uint8_t group)
+{
+    Serial.print("group reading group=");
+    Serial.println(group);
+    uint8_t buf[16] = {0x0F, block_counter, KWP_RECEIVE_GROUP_READING,
+                       0x07, kmh_a,         kmh_b,
+                       0x01, rpm_a,         rpm_b,
+                       0x25, 0x00,          0x01,
+                       0x2C, 0x0A,          0x11,
+                       0x03};
+    switch (group)
+    {
+        case 1:
+            rpm_b++;
+            kmh_b++;
+            return (KWP_send_block(buf, 16));
+        case 2: // 0x24 0x13 0x0C 0x05 // oil temp
+            buf[3] = 0x24;
+            buf[4] = odo_a;
+            buf[5] = odo_b;
 
-        buf[6] = 0x13;
-        buf[7] = fuel_a;
-        buf[8] = fuel_b;
+            buf[6] = 0x13;
+            buf[7] = fuel_a;
+            buf[8] = fuel_b;
 
-        buf[9] = 0x0C;
-        buf[10] = 0x01;
-        buf[11] = 0x01;
+            buf[9] = 0x0C;
+            buf[10] = 0x01;
+            buf[11] = 0x01;
 
-        buf[12] = 0x05;
-        buf[13] = 0x0A;
-        buf[14] = 0x81;
-        iteration++;
-        if (iteration % 6 == 0 && fuel_b > 1) {
-            fuel_b--;
-        }
-        if (iteration % 5 == 0) {
-            if (odo_b == 0xFF) {
-                odo_a++;
+            buf[12] = 0x05;
+            buf[13] = 0x0A;
+            buf[14] = 0x81;
+            iteration++;
+            if (iteration % 6 == 0 && fuel_b > 1)
+            {
+                fuel_b--;
             }
-            odo_b++;
-        }
-        return (KWP_send_block(buf, 16));
-    case 3: // 0x05 0x17 0x05 // coolant temp // oil temp
-        buf[3] = 0x05;
-        buf[4] = 0x0A;
-        buf[5] = 0x81;
+            if (iteration % 5 == 0)
+            {
+                if (odo_b == 0xFF)
+                {
+                    odo_a++;
+                }
+                odo_b++;
+            }
+            return (KWP_send_block(buf, 16));
+        case 3: // 0x05 0x17 0x05 // coolant temp // oil temp
+            buf[3] = 0x05;
+            buf[4] = 0x0A;
+            buf[5] = 0x81;
 
-        buf[6] = 0x17;
-        buf[7] = 0x01;
-        buf[8] = 0x01;
+            buf[6] = 0x17;
+            buf[7] = 0x01;
+            buf[8] = 0x01;
 
-        buf[9] = 0x05;
-        buf[10] = 0x0A;
-        buf[11] = 0x81;
+            buf[9] = 0x05;
+            buf[10] = 0x0A;
+            buf[11] = 0x81;
 
-        buf[12] = 0x00;
-        buf[13] = 0x01;
-        buf[14] = 0x01;
-        return (KWP_send_block(buf, 16));
-        break;
+            buf[12] = 0x00;
+            buf[13] = 0x01;
+            buf[14] = 0x01;
+            return (KWP_send_block(buf, 16));
+            break;
     }
 
     return false;
 }
 
-bool KWP_send_fault_codes() {
-    uint8_t buf[16] = {0x0F, block_counter, KWP_RECEIVE_FAULT_CODES, 0x46, 0x5A, 0xA3, 0x40, 0x71, 0x23, 0x46, 0x1E, 0x23, 0x46, 0x20, 0x23, 0x03};
+bool KWP_send_fault_codes()
+{
+    uint8_t buf[16] = {0x0F, block_counter, KWP_RECEIVE_FAULT_CODES,
+                       0x46, 0x5A,          0xA3,
+                       0x40, 0x71,          0x23,
+                       0x46, 0x1E,          0x23,
+                       0x46, 0x20,          0x23,
+                       0x03};
     return (KWP_send_block(buf, 16));
 }
 
-bool KWP_send_fault_codes_empty() {
+bool KWP_send_fault_codes_empty()
+{
     uint8_t buf[7] = {0x06, block_counter, KWP_RECEIVE_FAULT_CODES, 0xFF, 0xFF, 0x88, 0x03};
     return (KWP_send_block(buf, 7));
 }
@@ -255,43 +319,50 @@ bool KWP_send_fault_codes_empty() {
  * @return true No errors
  * @return false Errors, disconnect
  */
-bool KWP_send_ack() {
+bool KWP_send_ack()
+{
     uint8_t buf[4] = {0x03, block_counter, 0x09, 0x03};
     return (KWP_send_block(buf, 4));
 }
 
-bool KWP_send_devicedata() {
-    uint8_t s[32] = {0x0F, block_counter, 0xF6, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x20, 0x20, 0x03};
+bool KWP_send_devicedata()
+{
+    uint8_t s[32] = {0x0F, block_counter, 0xF6, 0x30, 0x31, 0x32, 0x33, 0x34,
+                     0x35, 0x36,          0x37, 0x38, 0x39, 0x20, 0x20, 0x03};
     uint8_t size = 0x0F + 1;
     return KWP_send_block(s, size);
 }
 
-bool KWP_receive_ack() {
+bool KWP_receive_ack()
+{
     unsigned long timeout = millis() + TIMEOUT;
-    int16_t data = 0;
     uint8_t s[32];
     int recvcount = 0;
 
-    while (recvcount < 4) {
-        while (Serial1.available()) {
-
-            data = OBD_read();
-            if (data == -1) {
+    while (recvcount < 4)
+    {
+        while (Serial1.available())
+        {
+            int16_t data = OBD_read();
+            if (data == -1)
+            {
                 Serial.println("receive ack error AVA=0 or empty buffer");
                 return false;
             }
             s[recvcount] = data;
             recvcount++;
 
-            if (recvcount >= 4) {
+            if (recvcount >= 4)
+            {
                 timeout = millis() + TIMEOUT;
                 break;
             }
 
-            if (recvcount == 2 && data != block_counter) {
-                Serial.print("block counter error Received: ");
+            if (recvcount == 2 && data != block_counter)
+            {
+                Serial.print("ACK block counter mismatch: got=0x");
                 Serial.print(data, HEX);
-                Serial.print(" Expected: ");
+                Serial.print(" expected=0x");
                 Serial.println(block_counter, HEX);
                 return false;
             }
@@ -301,59 +372,79 @@ bool KWP_receive_ack() {
 
             timeout = millis() + TIMEOUT;
 
-            // debugstrnum(F(" - KWP_receive_block: Added timeout. ReceiveCount: "), (uint8_t)recvcount);
-            // debug(F(". Processed data: "));
-            // debughex(data);
-            // debugstrnumln(F(". ACK compl: "), ((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+            // debugstrnum(F(" - KWP_receive_block: Added timeout. ReceiveCount: "),
+            // (uint8_t)recvcount); debug(F(". Processed data: ")); debughex(data);
+            // debugstrnumln(F(". ACK compl: "), ((!ackeachbyte) && (recvcount == size)) ||
+            // ((ackeachbyte) && (recvcount < size)));
         }
 
-        if (millis() >= timeout) {
+        if (millis() >= timeout)
+        {
             Serial.print("Timeout - recvcount = ");
             Serial.println(recvcount);
             return false;
         }
     }
 
-    if (s[0] != 0x03 || s[1] != block_counter || s[2] != 0x09 || s[3] != 0x03) {
-        Serial.println("received gibberish - expected ack block");
+    if (s[0] != 0x03 || s[1] != block_counter || s[2] != 0x09 || s[3] != 0x03)
+    {
+        Serial.print("ACK parse error [BC=");
+        Serial.print(block_counter);
+        Serial.print("]: got ");
+        for (uint8_t i = 0; i < 4; i++)
+        {
+            if (s[i] < 0x10)
+                Serial.print("0");
+            Serial.print(s[i], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
         return false;
     }
 
+    Serial.print("ACK ok [BC=");
+    Serial.print(block_counter);
+    Serial.println("]");
     block_counter++;
 
     return true;
 }
 
 // 9600 baud, addr 0x01
-bool wait_5baud() {
-    pinMode(PIN_RX, INPUT);
+bool wait_5baud()
+{
+    pinMode(PIN_RX, INPUT_PULLUP);
     initial_condition = digitalRead(PIN_RX);
     Serial.print("initial_condition ");
     Serial.println(initial_condition);
-    if (initial_condition == LOW) {
+    if (initial_condition == LOW)
+    {
         initial_condition = HIGH;
         return false;
     }
     Serial.println("waiting 10400 baud 0x17 addr PIN_RX_19 ...");
     g.print("Waiting 5baud..", LEFT, rows[4]);
-    const unsigned long start_timeout_ms = 10000;
-    unsigned long start_timeout_at = millis() + start_timeout_ms;
     bool ready = false;
-    while (!ready) {
-        if (digitalRead(PIN_RX) == LOW) {
-            ready = true;
+    unsigned long fall_time = 0;
+    while (!ready)
+    {
+        if (digitalRead(PIN_RX) == LOW)
+        {
+            fall_time = millis(); // record the actual falling edge
+            // A real 5-baud start bit stays LOW for 200 ms.
+            // Require 80 ms of sustained LOW to reject noise/glitches.
+            bool glitch = false;
+            while (millis() - fall_time < 80)
+            {
+                if (digitalRead(PIN_RX) == HIGH)
+                {
+                    glitch = true;
+                    break;
+                }
+            }
+            if (!glitch)
+                ready = true;
         }
-        if (millis() >= start_timeout_at) {
-            return false;
-        }
-    }
-    const int timeout_temp_bug = 3000;
-    unsigned long timeout_temp_bug_start = millis();
-    while (digitalRead(PIN_RX) == HIGH) {
-        if (millis() - timeout_temp_bug_start > timeout_temp_bug) {
-            return false;
-        }
-        delay(100);
     }
     Serial.println("initial_condition changed");
     g.setColor(TFT_GREEN);
@@ -362,22 +453,30 @@ bool wait_5baud() {
     bool bits[10];
     bits[0] = LOW;
     Serial.print(bits[0]);
-    // 5 baud = 200ms/bit. Wait 1.5 bits so we sample the first data bit mid-bit.
-    delay(300);
-    for (uint8_t i = 1; i < sizeof(bits); i++) {
+    // Sample first data bit at fall_time + 300ms (mid-bit of D0).
+    // Compensate for debounce and display overhead already elapsed.
+    unsigned long elapsed = millis() - fall_time;
+    if (elapsed < 300)
+        delay(300 - elapsed);
+    for (uint8_t i = 1; i < sizeof(bits); i++)
+    {
         bits[i] = digitalRead(PIN_RX);
         delay(200);
     }
     Serial.print(" ");
-    for (uint8_t i = 0; i < sizeof(bits); i++) {
+    for (uint8_t i = 0; i < sizeof(bits); i++)
+    {
         Serial.print(bits[i]);
         Serial.print(" ");
         g.printNumI(bits[i], cols[2 + i * 2], rows[5], 1);
     }
     Serial.println();
-    for (uint8_t i = 1; i < sizeof(bits); i++) {
-        if (((i <= 1 || i == 2 || i == 3 || i == 5 || i == 8 || i >= 9) && bits[i] == LOW) // 0111010011
-            || ((i == 4 || i == 6 || i == 7) && bits[i] == HIGH)) {
+    for (uint8_t i = 1; i < sizeof(bits); i++)
+    {
+        if (((i <= 1 || i == 2 || i == 3 || i == 5 || i == 8 || i >= 9) &&
+             bits[i] == LOW) // 0111010011
+            || ((i == 4 || i == 6 || i == 7) && bits[i] == HIGH))
+        {
             Serial.println("wrong 5baud address");
             initial_condition = HIGH;
             g.print("   ", RIGHT, rows[4]);
@@ -389,61 +488,92 @@ bool wait_5baud() {
     return true;
 }
 
-bool KWP_receive_block(uint8_t buff[], uint8_t &received_count, uint8_t &message_type) {
+bool KWP_receive_block(uint8_t buff[], uint8_t& received_count, uint8_t& message_type)
+{
     uint8_t recvcount = 0;
     uint8_t expected_total = 0; // total bytes including length byte
     unsigned long timeout = millis() + TIMEOUT;
 
-    while (true) {
-        while (Serial1.available()) {
+    while (true)
+    {
+        while (Serial1.available())
+        {
             int16_t raw = OBD_read();
-            if (raw < 0) {
+            if (raw < 0)
+            {
                 Serial.println("data = -1");
                 return false;
             }
             uint8_t data = (uint8_t)raw;
 
-            if (recvcount >= 32) {
+            if (recvcount >= 32)
+            {
                 Serial.println("receive block error: buffer overflow");
                 return false;
             }
             buff[recvcount] = data;
             recvcount++;
 
-            if (recvcount == 1) {
+            if (recvcount == 1)
+            {
                 expected_total = (uint8_t)(data + 1);
-                if (expected_total < 4 || expected_total > 32) {
+                if (expected_total < 4 || expected_total > 32)
+                {
                     Serial.println("receive block error: invalid length");
                     return false;
                 }
-            } else if (recvcount == 2) {
-                if (data != block_counter) {
+            }
+            else if (recvcount == 2)
+            {
+                if (data != block_counter)
+                {
                     Serial.println("WARNING: block counter does not match");
                 }
-            } else if (recvcount == 3) {
+            }
+            else if (recvcount == 3)
+            {
                 message_type = data;
             }
 
-            OBD_write(data ^ 0xFF); // send complement ack
             timeout = millis() + TIMEOUT;
 
-            if (expected_total != 0 && recvcount >= expected_total) {
+            if (expected_total != 0 && recvcount >= expected_total)
+            {
                 received_count = recvcount;
                 block_counter++;
+                Serial.print("RX [BC=");
+                Serial.print(block_counter - 1);
+                Serial.print("] type=0x");
+                Serial.print(message_type, HEX);
+                Serial.print(" len=");
+                Serial.print(recvcount);
+                Serial.print(" bytes: ");
+                for (uint8_t i = 0; i < recvcount; i++)
+                {
+                    if (buff[i] < 0x10)
+                        Serial.print("0");
+                    Serial.print(buff[i], HEX);
+                    Serial.print(" ");
+                }
+                Serial.println();
                 return true;
             }
+
+            OBD_write(data ^ 0xFF); // complement ack for all non-final bytes
         }
 
-        if (millis() >= timeout) {
+        if (millis() >= timeout)
+        {
             Serial.print("Timeout - recvcount = ");
             Serial.println(recvcount);
-            error_timeout();
+            error_timeout(TIMEOUT);
             return false;
         }
     }
 }
 
-void reset() {
+void reset()
+{
     connected = false;
     awake = false;
     block_counter = 0;
@@ -451,14 +581,17 @@ void reset() {
 
     Serial.println("Waiting 3 sec");
     delay(3000);
-    for (uint8_t i = 4; i < 20; i++) {
+    for (uint8_t i = 4; i < 20; i++)
+    {
         clearRow(i);
     }
     Serial1.end();
 }
 
-bool wakeup() {
-    if (!wait_5baud()) {
+bool wakeup()
+{
+    if (!wait_5baud())
+    {
         Serial.println("5baud error");
         g.setColor(TFT_RED);
         g.print("xxx", RIGHT, rows[5]);
@@ -474,10 +607,11 @@ bool wakeup() {
     return true;
 }
 
-bool connect() {
-
+bool connect()
+{
     Serial1.begin(BAUDRATE);
-    if (!KWP_send_syncbytes()) {
+    if (!KWP_send_syncbytes())
+    {
         Serial.println("syncbytes error");
         reset();
         return false;
@@ -485,11 +619,13 @@ bool connect() {
     g.print("Sending syncbytes..", LEFT, rows[6]);
     Serial.println("syncbytes success");
 
-    for (uint8_t i = 0; i < 4; i++) {
+    for (uint8_t i = 0; i < 4; i++)
+    {
         Serial.print("-> sending device data ");
         Serial.print(i + 1);
         Serial.println(" / 4");
-        if (!KWP_send_devicedata()) {
+        if (!KWP_send_devicedata())
+        {
             Serial.println("send device data error");
             g.setColor(TFT_RED);
             g.print("xxx", RIGHT, rows[6]);
@@ -497,34 +633,34 @@ bool connect() {
             reset();
             return false;
         }
-        if (i < 3) {
-            Serial.print("---> receive ack block ");
-            Serial.print(i + 1);
-            Serial.println(" / 4");
-            if (!KWP_receive_ack()) {
-                Serial.println("receive ack block error");
-                g.setColor(TFT_RED);
-                g.print("xxx", RIGHT, rows[6]);
-                g.setColor(font_color);
-                reset();
-                return false;
-            }
+        Serial.print("---> receive ack block ");
+        Serial.print(i + 1);
+        Serial.println(" / 4");
+        if (!KWP_receive_ack())
+        {
+            Serial.println("receive ack block error");
+            g.setColor(TFT_RED);
+            g.print("xxx", RIGHT, rows[6]);
+            g.setColor(font_color);
+            reset();
+            return false;
         }
     }
     Serial.println("device data success");
     g.setColor(TFT_GREEN);
     g.print("---", RIGHT, rows[6]);
 
-    // g.print("Sending ack..", LEFT, rows[7]);
-    // Serial.println("sending ack block");
-    // if (!KWP_send_ack()) {
-    //     Serial.println("send ack error");
-    //     g.setColor(TFT_RED);
-    //     g.print("failed", RIGHT, rows[7]);
-    //     g.setColor(font_color);
-    //     reset();
-    //     return false;
-    // }
+    g.print("Sending ack..", LEFT, rows[7]);
+    Serial.println("sending ack block");
+    if (!KWP_send_ack())
+    {
+        Serial.println("send ack error");
+        g.setColor(TFT_RED);
+        g.print("failed", RIGHT, rows[7]);
+        g.setColor(font_color);
+        reset();
+        return false;
+    }
     connected = true;
 
     g.setColor(TFT_YELLOW);
@@ -536,7 +672,9 @@ bool connect() {
     Serial.println("------------------------------------------");
     Serial.println("|               connected                |");
     Serial.println("|----------------------------------------|");
-    Serial.println("|keep alive by sending ack within 500 ms |");
+    Serial.print("|keep alive by sending ack within ");
+    Serial.print(TIMEOUT);
+    Serial.println(" ms |");
     Serial.println("|----------------------------------------|");
     return true;
 }

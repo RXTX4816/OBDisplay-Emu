@@ -1,6 +1,9 @@
 # Arduino Mega KWP1281 ECU Emulator
 
 [![CI](https://github.com/RXTX4816/OBDisplay-Emu/actions/workflows/ci.yml/badge.svg)](https://github.com/RXTX4816/OBDisplay-Emu/actions/workflows/ci.yml)
+[![RAM](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RXTX4816/OBDisplay-Emu/main/.github/badges/ram.json)](https://github.com/RXTX4816/OBDisplay-Emu/actions/workflows/ci.yml)
+[![Flash](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RXTX4816/OBDisplay-Emu/main/.github/badges/flash.json)](https://github.com/RXTX4816/OBDisplay-Emu/actions/workflows/ci.yml)
+[![Platform](https://img.shields.io/badge/platform-ATmega2560-orange)](https://docs.platformio.org/en/latest/boards/atmelavr/megaatmega2560.html)
 
 This code is for the Arduino Mega with a 480x320 Non-Touch Color Display Shield (Optional)
 
