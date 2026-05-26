@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - '.github/badges/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - '.github/badges/**'
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install lint tools
+        run: sudo apt-get update && sudo apt-get install -y clang-format cppcheck
+
+      - name: Check formatting (clang-format)
+        run: |
+          find src \( -name '*.cpp' -o -name '*.h' \) ! -name 'UTFT*' | \
+            xargs clang-format --dry-run --Werror --style=file
+
+      - name: Static analysis (cppcheck)
+        run: |
+          cppcheck \
+            --enable=warning,style,performance \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --suppress=syntaxError:src/UTFT.h \
+            --inline-suppr \
+            --error-exitcode=1 \
+            src/main.cpp src/server.h src/display.h
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pipx install platformio
+
+      - name: Build
+        run: pio run -e ATmega2560 2>&1 | tee /tmp/pio_output.txt
+
+      - name: Report memory usage
+        run: grep -E "^RAM:|^Flash:" /tmp/pio_output.txt || true
