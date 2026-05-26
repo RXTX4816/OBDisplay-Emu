@@ -60,27 +60,3 @@ jobs:
 
       - name: Report memory usage
         run: grep -E "^RAM:|^Flash:" /tmp/pio_output.txt || true
-
-      - name: Update memory badges
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          RAM_LINE=$(grep "^RAM:"    /tmp/pio_output.txt || true)
-          FLASH_LINE=$(grep "^Flash:" /tmp/pio_output.txt || true)
-
-          RAM_USED=$(echo "$RAM_LINE"    | sed 's/.*used \([0-9]*\) bytes.*/\1/')
-          RAM_TOTAL=$(echo "$RAM_LINE"   | sed 's/.*from \([0-9]*\) bytes.*/\1/')
-          RAM_PCT=$(echo "$RAM_LINE"     | sed 's/.*[[:space:]]\([0-9.]*\)%.*/\1/')
-          FLASH_USED=$(echo "$FLASH_LINE"  | sed 's/.*used \([0-9]*\) bytes.*/\1/')
-          FLASH_TOTAL=$(echo "$FLASH_LINE" | sed 's/.*from \([0-9]*\) bytes.*/\1/')
-          FLASH_PCT=$(echo "$FLASH_LINE"   | sed 's/.*[[:space:]]\([0-9.]*\)%.*/\1/')
-
-          echo "{\"schemaVersion\":1,\"label\":\"RAM\",\"message\":\"${RAM_USED} / ${RAM_TOTAL} B (${RAM_PCT}%)\",\"color\":\"blue\"}" \
-            > .github/badges/ram.json
-          echo "{\"schemaVersion\":1,\"label\":\"Flash\",\"message\":\"${FLASH_USED} / ${FLASH_TOTAL} B (${FLASH_PCT}%)\",\"color\":\"blue\"}" \
-            > .github/badges/flash.json
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/badges/ram.json .github/badges/flash.json
-          git diff --cached --quiet || git commit -m "chore: update memory badges [skip ci]"
-          git push
