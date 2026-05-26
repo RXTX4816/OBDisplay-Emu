@@ -5,12 +5,10 @@ on:
     branches: [main]
     paths-ignore:
       - 'README.md'
-      - '.github/badges/**'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'README.md'
-      - '.github/badges/**'
   workflow_dispatch:
 
 jobs:
