@@ -7,11 +7,32 @@
 
 This code is for the Arduino Mega with a 480x320 Non-Touch Color Display Shield (Optional)
 
-Not fully functional yet, since emulating the original VAG ECU timings is TODO.
-
 ![](assets/mainscreen.png)
 
 Used to test [OBDisplay-Uno](https://github.com/RXTX4816/OBDisplay-Uno) or [OBDisplay-Mega](https://github.com/RXTX4816/OBDisplay-Mega) when not having a real ECU around.
+
+## Installation
+
+Pre-built firmware is available on the [Releases](https://github.com/RXTX4816/OBDisplay-Emu/releases) page — no toolchain required.
+
+### Download and flash
+
+1. Download `OBDisplay-Emu-<version>.hex` from the latest release.
+2. Flash with `avrdude` (included with the Arduino IDE or install separately):
+   ```bash
+   avrdude -c arduino -p atmega2560 -P /dev/ttyUSB0 -b 115200 \
+     -U flash:w:OBDisplay-Uno-<version>.hex:i
+   ```
+   Replace `/dev/ttyUSB0` with your port (`COM3` on Windows, `/dev/cu.usbmodem*` on macOS).
+3. Or upload directly via PlatformIO if you have the repo cloned:
+   ```bash
+   pio run --target upload
+   ```
+
+The release also includes `OBDisplay-Emu-<version>.elf` — this is for developers only (symbol-level debugging with `avr-gdb`, flash analysis with `avr-nm`). You cannot flash it directly.
+
+
+## Features
 
 Uses Hardwareserial and implements ECHO (Every byte_in is mirrored by the KLine interface).
 Full-duplex=true // If Hardwareserial client
