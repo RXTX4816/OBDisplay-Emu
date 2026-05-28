@@ -35,8 +35,8 @@ The release also includes `OBDisplay-Emu-<version>.elf` — this is for develope
 ## Features
 
 Uses Hardwareserial and implements ECHO (Every byte_in is mirrored by the KLine interface).
-Full-duplex=true // If Hardwareserial client
-Full duplex=false // If Softwareserial
+- Full-duplex=true // If Hardwareserial on client
+- Full duplex=false // If Softwareserial on client
 
 Mimicks a KWP1281 ECU on address 0x17 with baud 10400.
 
