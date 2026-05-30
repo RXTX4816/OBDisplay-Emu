@@ -150,25 +150,25 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
       {0, 0, 0}},
      {
          // Grp1 (dynamic): RPM, Temp, Lambda%, Readiness bits — overridden in code
-         {{0x01, 40, 0}, {0x05, 10, 57}, {0x02, 10, 0}, {0x0F, 0, 0xB2}},
+         {{0x01, 40, 0}, {0x05, 10, 117}, {0x02, 10, 0}, {0x0F, 0, 0xB2}},
          // Grp2: RPM=0, Load=0.0%, TimeCorr=0.0ms, AbsPres=1012.0mbar
          {{0x01, 40, 0}, {0x21, 10, 0}, {0x0D, 10, 0}, {0x17, 100, 253}},
          // Grp3 (dynamic): RPM, AbsPres, TBAngle, SteerAngle — overridden in code
          {{0x01, 40, 0}, {0x17, 100, 254}, {0x21, 1, 55}, {0x1A, 10, 127}},
-         // Grp4: RPM=0, 11.70V, 17.0°C, 14.0°C
-         {{0x01, 40, 0}, {0x06, 100, 117}, {0x05, 10, 57}, {0x05, 10, 54}},
+         // Grp4: RPM=0, 11.70V, 17.0°C, 14.0°C (K5: b=T+100)
+         {{0x01, 40, 0}, {0x06, 100, 117}, {0x05, 10, 117}, {0x05, 10, 114}},
          // Grp5: RPM=0, Load=0.0%, Speed=0.0km/h, PartThrottle (label idx 0)
          {{0x01, 40, 0}, {0x21, 10, 0}, {0x07, 100, 0}, {0x0E, 0, 0}},
-         // Grp6: RPM=0, Load=0.0%, 14.0°C, Lambda=-1.0% (placeholder 0)
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x05, 10, 54}, {0x02, 10, 0}},
+         // Grp6: RPM=0, Load=0.0%, 14.0°C, Lambda=-1.0% (placeholder 0) (K5: b=T+100)
+         {{0x01, 40, 0}, {0x21, 10, 0}, {0x05, 10, 114}, {0x02, 10, 0}},
          // Grp7-9: empty → group reading with zero fields
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          // Grp10: RPM=0, Load=0.0%, Load=6.0%, SteerAngle=0.0°
          {{0x01, 40, 0}, {0x21, 10, 0}, {0x21, 10, 6}, {0x1A, 10, 127}},
-         // Grp11: RPM=0, 17.0°C, 14.0°C, SteerAngle=0.0°
-         {{0x01, 40, 0}, {0x05, 10, 57}, {0x05, 10, 54}, {0x1A, 10, 127}},
+         // Grp11: RPM=0, 17.0°C, 14.0°C, SteerAngle=0.0° (K5: b=T+100)
+         {{0x01, 40, 0}, {0x05, 10, 117}, {0x05, 10, 114}, {0x1A, 10, 127}},
          // Grp12-13: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
@@ -263,10 +263,10 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
          {{0x21, 10, 223}, {0x21, 10, 223}, {0x21, 10, 223}, {0x21, 10, 39}},
          // Grp5: Measured=237.0, Specified=234.0, Pos:fresh-air=234.0, Pos:recirc=30.0
          {{0x21, 10, 237}, {0x21, 10, 234}, {0x21, 10, 234}, {0x21, 10, 30}},
-         // Grp6: Temp-display=0.0°C, Air-intake=7.0°C, Outside=0.0°C, Sun-sensor=0.0%
-         {{0x05, 10, 40}, {0x05, 10, 47}, {0x05, 10, 40}, {0x21, 10, 0}},
-         // Grp7: OutletPanel=0.0(raw), FloorOutlet=5.0°C, PanelNearLCD=3.0°C, N/A
-         {{0x0E, 0, 0}, {0x05, 10, 45}, {0x05, 10, 43}, {0x00, 0, 0}},
+         // Grp6: Temp-display=0.0°C, Air-intake=7.0°C, Outside=0.0°C, Sun-sensor=0.0% (K5: b=T+100)
+         {{0x05, 10, 100}, {0x05, 10, 107}, {0x05, 10, 100}, {0x21, 10, 0}},
+         // Grp7: OutletPanel=0.0(raw), FloorOutlet=5.0°C, PanelNearLCD=3.0°C, N/A (K5: b=T+100)
+         {{0x0E, 0, 0}, {0x05, 10, 105}, {0x05, 10, 103}, {0x00, 0, 0}},
          // Grp8: Spec.V-blower=0.00V, Meas.V-blower=0.28V (A=28,B=10: 0.28V), Meas.V-A/C=12.18V,
          // empty
          {{0x06, 100, 0}, {0x06, 28, 10}, {0x06, 100, 122}, {0x00, 0, 0}},
@@ -342,12 +342,13 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
          // Grp1: Speed(dynamic), RPM(dynamic), OilPressure(label idx 2), Time(A=21 B=50
          // placeholder)
          {{0x07, 100, 0}, {0x01, 40, 0}, {0x0E, 0, 2}, {0x0E, 21, 50}},
-         // Grp2: Odometer(dynamic), FuelLevel=23.0L, FuelSenderRes=93Ohm, AmbientTemp=0.0°C
-         // FuelLevel: 0x04 A*B*0.001=23.0 → A=100 B=230
-         // FuelSender: 0x14 A*B*0.1=93Ohm → A=10 B=93
-         {{0x24, 0, 0}, {0x04, 100, 230}, {0x14, 10, 93}, {0x05, 10, 40}},
-         // Grp3: CoolantTemp(dynamic), OilLevel=OK(label 0), OilTemp=11.0°C, N/A
-         {{0x05, 10, 52}, {0x0E, 0, 0}, {0x05, 10, 51}, {0x00, 0, 0}},
+         // Grp2: Odometer(dynamic), FuelLevel(dynamic), FuelSenderRes=93Ohm, AmbientTemp=20°C
+         // FuelLevel: K4 abs(b-127)*0.01*100=55L → B=182; AmbientTemp: K5 10*(b-100)*0.1=0°C →
+         // B=100
+         {{0x24, 0, 0}, {0x04, 100, 182}, {0x14, 10, 93}, {0x05, 10, 120}},
+         // Grp3: CoolantTemp(dynamic), OilLevel=OK(label 0), OilTemp(dynamic), N/A
+         // K5: 10*(b-100)*0.1=T°C; 12°C → B=112, 11°C → B=111
+         {{0x05, 10, 112}, {0x0E, 0, 0}, {0x05, 10, 111}, {0x00, 0, 0}},
          // Grp4-23: unused
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
@@ -710,39 +711,45 @@ bool KWP_send_group_reading(uint8_t group)
     }
     else if (current_addr == 0x17 && group == 2)
     {
-        // Grp2: Odometer(km), FuelLevel=23.0L, FuelSenderRes=93Ohm, AmbientTemp=0.0°C
+        // Grp2: Odometer(km), FuelLevel, FuelSenderRes=93Ohm, AmbientTemp=20°C
+        // K4 formula: abs(b-127)*0.01*a → fuel_L = abs(b-127)*0.01*100, so b = 127 + fuel_L
+        // K5 formula: a*(b-100)*0.1 → T = a*(b-100)*0.1, so b = T + 100 (with a=10)
         unsigned long elapsed_s = (millis() - sim_state.start_ms) / 1000;
         float speed = get_simulated_speed_kmh();
         uint16_t km_delta = (uint16_t)(speed * elapsed_s / 3600.0f);
         uint16_t total_km = sim_state.odometer_km + km_delta;
+        uint8_t fuel_b =
+            (uint8_t)(127 + sim_state.fuel_tenth_L / 10); // K4: abs(b-127)*0.01*100 = fuel_L
 
         buf[3] = 0x24;
         buf[4] = (uint8_t)(total_km >> 8);
         buf[5] = (uint8_t)(total_km & 0xFF); // odometer
         buf[6] = 0x04;
         buf[7] = 100;
-        buf[8] = 230; // 23.0L fuel (100*230*0.001)
+        buf[8] = fuel_b; // fuel level (K4: abs(b-127)*0.01*100 = liters)
         buf[9] = 0x14;
         buf[10] = 10;
-        buf[11] = 93; // 93Ohm sender (10*93*0.1)
+        buf[11] = 93; // 93Ohm sender
         buf[12] = 0x05;
         buf[13] = 10;
-        buf[14] = 40; // 0.0°C ambient (10*40*0.1-40)
+        buf[14] = 120; // 20°C ambient (K5: 10*(120-100)*0.1 = 20°C)
     }
     else if (current_addr == 0x17 && group == 3)
     {
-        // Grp3: CoolantTemp, OilLevel=OK(label 0), OilTemp=11.0°C, N/A
+        // Grp3: CoolantTemp, OilLevel=OK(label 0), OilTemp, N/A
+        // K5 formula: a*(b-100)*0.1 → T°C, so b = T + 100 (with a=10)
         int8_t coolant = get_simulated_coolant_temp();
+        int8_t oil_temp = get_simulated_oil_temp();
 
         buf[3] = 0x05;
         buf[4] = 10;
-        buf[5] = (uint8_t)(coolant + 40); // coolant °C
+        buf[5] = (uint8_t)(coolant + 100); // coolant °C (K5: 10*(b-100)*0.1 = coolant)
         buf[6] = 0x0E;
         buf[7] = 0;
         buf[8] = 0; // oil level OK (label idx 0)
         buf[9] = 0x05;
         buf[10] = 10;
-        buf[11] = 51; // 11.0°C oil temp
+        buf[11] = (uint8_t)(oil_temp + 100); // oil temp °C (K5: 10*(b-100)*0.1 = oil_temp)
         buf[12] = 0x00;
         buf[13] = 0;
         buf[14] = 0; // N/A
@@ -757,7 +764,7 @@ bool KWP_send_group_reading(uint8_t group)
         buf[5] = (uint8_t)(rpm / 8); // RPM
         buf[6] = 0x05;
         buf[7] = 10;
-        buf[8] = 57; // 17.0°C air temp
+        buf[8] = 117; // 17.0°C air temp (K5: 10*(117-100)*0.1 = 17°C)
         buf[9] = 0x02;
         buf[10] = 10;
         buf[11] = 0; // 0.0% lambda
