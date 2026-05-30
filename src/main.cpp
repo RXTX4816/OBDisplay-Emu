@@ -72,7 +72,7 @@ void loop()
         case KWP_REQUEST_FAULT_CODES:
             Serial.println("-> FAULT_CODES");
             if (!KWP_send_fault_codes())
-            { // or KWP_send_fault_codes_empty
+            {
                 Serial.println("send fault codes error");
                 reset();
                 return;
@@ -80,7 +80,6 @@ void loop()
             break;
         case KWP_REQUEST_CLEAR_FAULTS:
             Serial.println("-> CLEAR_FAULTS");
-            ;
             if (!KWP_send_ack())
             {
                 Serial.println("send ack block error");
