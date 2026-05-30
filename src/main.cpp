@@ -49,11 +49,24 @@ void loop()
             break;
         case KWP_ACKNOWLEDGE:
             // Serial.println("-> ACKNOWLEDGE");
-            if (!KWP_send_ack())
+            if (fault_send_offset > 0 && fault_send_offset < current_ecu.num_faults)
             {
-                Serial.println("send ack block error");
-                reset();
-                return;
+                if (!KWP_send_fault_codes_from(fault_send_offset))
+                {
+                    Serial.println("send fault codes (cont) error");
+                    reset();
+                    return;
+                }
+            }
+            else
+            {
+                fault_send_offset = 0;
+                if (!KWP_send_ack())
+                {
+                    Serial.println("send ack block error");
+                    reset();
+                    return;
+                }
             }
             break;
         case KWP_REQUEST_GROUP_READING:
@@ -80,6 +93,7 @@ void loop()
             break;
         case KWP_REQUEST_CLEAR_FAULTS:
             Serial.println("-> CLEAR_FAULTS");
+            fault_send_offset = 0;
             if (!KWP_send_ack())
             {
                 Serial.println("send ack block error");

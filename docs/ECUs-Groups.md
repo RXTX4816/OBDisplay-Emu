@@ -4,7 +4,7 @@
 
 Group 0: 3 digit numbers for 1-10. Real values: 1=148, 2=203, 3=000, 4=126, 5=040, 6=127, 7=143, 8=128 i have no clue what they mean, but i guess they are values or something, not sure.. maybe measurement blocks - since in vcds switch to meas. blocks it only shows group 0 as available
 
-Grp1: 0 /min RPM, 17.0°C Temperature, 0.0% Lambda, 10110010 Binary Bits (idk, when clicking on readiness in vcds it shows 10100101 readiness status: exhaust gas recirculation failed or incomplete, secondary air injection passed, oxygen sensor heating passed, evaporative emissions failed or incomplete, oxygen sensors failed or incomplete, catalyst heating passed, air conditioning passed, catalytic converter(s) failed or incomplete make sure to implement this all right wherever it is)
+Grp1: 0 /min RPM, 17.0°C Temperature oil, 0.0% Lambda, 10110010 Binary Bits (idk, when clicking on readiness in vcds it shows 10100101 readiness status: exhaust gas recirculation failed or incomplete, secondary air injection passed, oxygen sensor heating passed, evaporative emissions failed or incomplete, oxygen sensors failed or incomplete, catalyst heating passed, air conditioning passed, catalytic converter(s) failed or incomplete make sure to implement this all right wherever it is)
 
 Grp2: 0/min RPM, 0.0% Load, 0.0 ms Time Corr., 1012.0 mbar Absolute Pres.
 

@@ -76,7 +76,9 @@ static const uint8_t KWP_RECEIVE_OUTPUT_TEST = 0xF5;   // request: KWP_REQUEST_O
 static const uint8_t KWP_RECEIVE_BASIC_SETTING = 0xF4; // request: KWP_REQUEST_BASIC_SETTING
 
 // Forward declarations
+bool KWP_send_ack();
 bool KWP_send_fault_codes_empty();
+bool KWP_send_fault_codes_from(uint8_t offset);
 
 /// ECU DEFINITIONS (PROGMEM)
 struct ECUDef
@@ -88,7 +90,7 @@ struct ECUDef
     char coding_wsc[17];
     uint8_t num_groups;
     uint8_t num_faults;
-    uint8_t faults[4][3];
+    uint8_t faults[8][3];
     uint8_t groups[23][4][3]; // groups[group_idx][field_idx][type/a/b]
 };
 
@@ -102,7 +104,7 @@ void load_ecu_def(const ECUDef* ecu_progmem, ECUDef& ecu_ram)
     memcpy_P(ecu_ram.coding_wsc, &ecu_progmem->coding_wsc, 17);
     ecu_ram.num_groups = pgm_read_byte(&ecu_progmem->num_groups);
     ecu_ram.num_faults = pgm_read_byte(&ecu_progmem->num_faults);
-    for (uint8_t i = 0; i < 4; i++)
+    for (uint8_t i = 0; i < 8; i++)
         for (uint8_t j = 0; j < 3; j++)
             ecu_ram.faults[i][j] = pgm_read_byte(&ecu_progmem->faults[i][j]);
     for (uint8_t i = 0; i < 23; i++)
@@ -137,8 +139,15 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      "MARELLI 4LV 3290  ",
      "00031  WSC 01317  ",
      23,
-     0,
-     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+     6,
+     {{0x02, 0x01, 0x2F}, // 00513 Crankshaft Position Sensor (sporadic)
+      {0x02, 0x19, 0x3F}, // 00537 Throttle Position Sensor 1 (static)
+      {0x02, 0x31, 0x2F}, // 00561 Fuel Trim Additive Bank 1 (sporadic)
+      {0x02, 0x41, 0x2F}, // 00577 Mass Air Flow Sensor (sporadic)
+      {0x02, 0x9C, 0x2F}, // 00668 Supply Voltage (sporadic)
+      {0x01, 0x2C, 0x3F}, // 00300 Random Misfire (static)
+      {0, 0, 0},
+      {0, 0, 0}},
      {
          // Grp1 (dynamic): RPM, Temp, Lambda%, Readiness bits — overridden in code
          {{0x01, 40, 0}, {0x05, 10, 57}, {0x02, 10, 0}, {0x0F, 0, 0xB2}},
@@ -192,7 +201,7 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      "10241  WSC 01317  ",
      5,
      0,
-     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
      {
          // Grp1: wheel speeds 0.0 km/h × 4
          {{0x07, 100, 0}, {0x07, 100, 0}, {0x07, 100, 0}, {0x07, 100, 0}},
@@ -233,7 +242,14 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      "01000  WSC 01317  ",
      8,
      1,
-     {{0x01, 0x27, 0x4E}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
+     {{0x01, 0x27, 0x4E},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0}},
      {
          // Grp1: A/C sw-off cond=9 (label), EngSpeedRecog=0, Speed=0.0km/h, StandingTime=121.0min
          // StandingTime: 0x21 A=10 B=121 → 10*121*0.1=121.0
@@ -278,7 +294,7 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      "12338  WSC 01317  ",
      1,
      0,
-     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
      {
          {{0x06, 100, 0}, {0x06, 100, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
@@ -313,8 +329,15 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      "KOMBI+WEGFAHRS. BOO",
      "05143  WSC 01266  ",
      3,
-     0,
-     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+     6,
+     {{0x02, 0x4C, 0x2F}, // 00588 Vehicle Speed Sensor (sporadic)
+      {0x03, 0x08, 0x2F}, // 00776 Fuel Level Sensor (sporadic)
+      {0x05, 0x1B, 0x3F}, // 01307 Speedometer (static)
+      {0x04, 0x98, 0x2F}, // 01176 Oil Level Sensor (sporadic)
+      {0x03, 0x0B, 0x2F}, // 00779 Coolant Temp Sensor (sporadic)
+      {0x01, 0xBE, 0x3F}, // 00446 Oil Pressure Switch (static)
+      {0, 0, 0},
+      {0, 0, 0}},
      {
          // Grp1: Speed(dynamic), RPM(dynamic), OilPressure(label idx 2), Time(A=21 B=50
          // placeholder)
@@ -355,7 +378,7 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      "00006  WSC 01317  ",
      0,
      0,
-     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
      {
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
@@ -389,7 +412,14 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      "04097  WSC 01317  ",
      16,
      2,
-     {{0x00, 0x94, 0x3F}, {0x00, 0x94, 0x40}, {0x00, 0, 0}, {0x00, 0, 0}},
+     {{0x00, 0x94, 0x3F},
+      {0x00, 0x94, 0x40},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0},
+      {0, 0, 0}},
      {
          // Grp1: RearWinLock=OFF(0), DDLockSw=NotOper(0), DDWindowMotor=Still(0), N/A
          {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x00, 0, 0}},
@@ -460,6 +490,7 @@ bool initial_condition = HIGH;
 bool connected = false;
 
 uint8_t block_counter = 0;
+uint8_t fault_send_offset = 0;
 /**
  * @brief Read OBD input from ECU
  *
@@ -818,27 +849,38 @@ bool KWP_send_group_reading(uint8_t group)
     return KWP_send_block(buf, 16);
 }
 
+bool KWP_send_fault_codes_from(uint8_t offset)
+{
+    uint8_t remaining = current_ecu.num_faults - offset;
+    if (remaining == 0)
+    {
+        fault_send_offset = 0;
+        return KWP_send_ack();
+    }
+
+    uint8_t count = (remaining > 4) ? 4 : remaining;
+    uint8_t frame_size = count * 3 + 4; // header(3) + data + terminator(1)
+    uint8_t buf[16] = {0};
+    buf[0] = frame_size - 1;
+    buf[1] = block_counter;
+    buf[2] = KWP_RECEIVE_FAULT_CODES;
+    for (uint8_t i = 0; i < count; i++)
+    {
+        buf[3 + i * 3] = current_ecu.faults[offset + i][0]; // DTC high
+        buf[4 + i * 3] = current_ecu.faults[offset + i][1]; // DTC low
+        buf[5 + i * 3] = current_ecu.faults[offset + i][2]; // status
+    }
+    buf[3 + count * 3] = 0x03;
+
+    fault_send_offset = offset + count;
+    return KWP_send_block(buf, frame_size);
+}
+
 bool KWP_send_fault_codes()
 {
     if (current_ecu.num_faults == 0)
         return KWP_send_fault_codes_empty();
-
-    uint8_t buf[16] = {0x0F, block_counter, KWP_RECEIVE_FAULT_CODES,
-                       0x00, 0x00,          0x00,
-                       0x00, 0x00,          0x00,
-                       0x00, 0x00,          0x00,
-                       0x00, 0x00,          0x00,
-                       0x03};
-
-    // Copy up to 4 fault codes from ECU definition
-    for (uint8_t i = 0; i < current_ecu.num_faults && i < 4; i++)
-    {
-        buf[3 + i * 3] = current_ecu.faults[i][0]; // DTC high
-        buf[4 + i * 3] = current_ecu.faults[i][1]; // DTC low
-        buf[5 + i * 3] = current_ecu.faults[i][2]; // status
-    }
-
-    return (KWP_send_block(buf, 16));
+    return KWP_send_fault_codes_from(0);
 }
 
 bool KWP_send_fault_codes_empty()
@@ -1194,6 +1236,7 @@ void reset()
     connected = false;
     awake = false;
     block_counter = 0;
+    fault_send_offset = 0;
     initial_condition = HIGH;
 
     Serial.println("Waiting 3 sec");
