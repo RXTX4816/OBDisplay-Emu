@@ -1,5 +1,59 @@
 // ARDUINO MEGA 2560 + TFT LCD SHIELD + Serial1
+#include "scheduler.h"
 #include "server.h"
+
+void push_status_msg_type(uint8_t msg_type)
+{
+    switch (msg_type)
+    {
+        case KWP_ACKNOWLEDGE:
+        case KWP_REQUEST_GROUP_READING:
+        case KWP_REQUEST_GROUP_READING_0:
+            return; // routine keep-alive, don't log
+        case KWP_DISCONNECT:
+            push_status(">> DISCONNECT");
+            return;
+        case KWP_REQUEST_FAULT_CODES:
+            push_status(">> DTC READ");
+            return;
+        case KWP_REQUEST_CLEAR_FAULTS:
+            push_status(">> CLR FAULTS");
+            return;
+        case KWP_REQUEST_LOGIN:
+            push_status(">> LOGIN");
+            return;
+        case KWP_REQUEST_RECODE:
+            push_status(">> RECODE");
+            return;
+        case KWP_REQUEST_ADAPTATION:
+            push_status(">> ADAPT READ");
+            return;
+        case KWP_REQUEST_ADAPTATION_TEST:
+            push_status(">> ADAPT TEST");
+            return;
+        case KWP_REQUEST_ADAPTATION_SAVE:
+            push_status(">> ADAPT SAVE");
+            return;
+        case KWP_REQUEST_READ_ROM:
+            push_status(">> ROM READ");
+            return;
+        case KWP_REQUEST_OUTPUT_TEST:
+            push_status(">> ACT TEST");
+            return;
+        case KWP_REQUEST_BASIC_SETTING:
+            push_status(">> BASIC SET");
+            return;
+        case KWP_REQUEST_BASIC_SETTING_0:
+            push_status(">> BASIC SET 0");
+            return;
+        default:
+        {
+            char buf[STATUS_LINE_LEN + 1];
+            snprintf(buf, sizeof(buf), "?? UNKN: 0x%02X", msg_type);
+            push_status(buf);
+        }
+    }
+}
 
 void setup()
 {
@@ -10,7 +64,15 @@ void setup()
 
 void loop()
 {
+    unsigned long display_work_start = micros();
+
     display_status_bar(block_counter, awake, connected);
+
+    // Render one changed log line per loop — yields immediately if KWP byte arrived
+    if (!scheduler_kwp_pending() && scheduler.rendering_in_progress)
+        scheduler_render_next_word();
+
+    scheduler.display_elapsed_us += micros() - display_work_start;
 
     // 5 baud
     if (!awake)
@@ -38,8 +100,9 @@ void loop()
         reset();
         return;
     }
-    // Print message type in list
+    // Print message type in hex scroll area, log notable events
     print_message_type(message_type);
+    push_status_msg_type(message_type);
     switch (message_type)
     {
         case KWP_DISCONNECT:
