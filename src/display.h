@@ -82,7 +82,7 @@ void print_message_type(uint8_t message_type)
 void clearRow(byte row)
 {
     g.setColor(back_color);
-    g.print((char*)"                              ", LEFT, rows[row]);
+    g.print("                              ", LEFT, rows[row]);
     g.setColor(font_color);
 }
 
@@ -157,7 +157,7 @@ bool scheduler_render_next_word()
         g.print("                              ", LEFT, rows[14 + scheduler.render_line_idx]);
         g.setColor(font_color);
         if (line[0] != '\0')
-            g.print(const_cast<char*>(line), LEFT, rows[14 + scheduler.render_line_idx]);
+            g.print(line, LEFT, rows[14 + scheduler.render_line_idx]);
 
         strncpy(_status_log_prev[scheduler.render_line_idx], line, STATUS_LINE_LEN + 1);
         scheduler.render_line_idx++;
