@@ -116,13 +116,15 @@ void load_ecu_def(const ECUDef* ecu_progmem, ECUDef& ecu_ram)
 // Measurement value encoding formulas (VCDS/KWP1281 standard):
 // 0x01: rpm   = A * B * 0.2          (A=40, B=rpm/8)
 // 0x02: %     = A * B * 0.002        (placeholder for fuel trim; negative not representable)
-// 0x04: -     = A * B * 0.001        (dimensionless with decimal)
-// 0x05: °C    = A * B * 0.1 - 40     (A=10, B=°C+40)
+// 0x04: -     = A * |B-127| * 0.01   (K4; A=100 for fuel level: |B-127| = liters)
+//              OR A * B * 0.001       (raw form used for some sensors, e.g. lateral accel)
+// 0x05: °C    = A * B * 0.1 - 100    (A=10, B=°C+100; confirmed against VCDS recording)
 // 0x06: V     = A * B * 0.001        (A=100, B=V*10)
 // 0x07: km/h  = A * B * 0.01         (A=100, B=km/h)
 // 0x0C: bar   = A * B * 0.001        (A=42, B=10 → 0.42 bar)
+// 0x0D: ms    = A * B * 0.001        (A=10, B=ms)
 // 0x0E: -     = raw label lookup; B is the raw index/value VCDS maps via label file
-// 0x0F: bits  = B displayed as 8-bit binary string
+// 0x10: bits  = B displayed as 8-bit binary string
 // 0x14: Ohm   = A * B * 0.1          (A=10, B=Ohm)
 // 0x17: mbar  = A * B * 0.04         (A=100, B=mbar/4)
 // 0x1A: °     = A * B * 0.1 - 127   (A=10, B=°+127; 0°→B=127)
@@ -150,15 +152,15 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
       {0, 0, 0}},
      {
          // Grp1 (dynamic): RPM, Temp, Lambda%, Readiness bits — overridden in code
-         {{0x01, 40, 0}, {0x05, 10, 117}, {0x02, 10, 0}, {0x0F, 0, 0xB2}},
+         {{0x01, 40, 0}, {0x05, 10, 117}, {0x02, 10, 0}, {0x10, 0, 0xB2}},
          // Grp2: RPM=0, Load=0.0%, TimeCorr=0.0ms, AbsPres=1012.0mbar
          {{0x01, 40, 0}, {0x21, 10, 0}, {0x0D, 10, 0}, {0x17, 100, 253}},
          // Grp3 (dynamic): RPM, AbsPres, TBAngle, SteerAngle — overridden in code
          {{0x01, 40, 0}, {0x17, 100, 254}, {0x21, 1, 55}, {0x1A, 10, 127}},
          // Grp4: RPM=0, 11.70V, 17.0°C, 14.0°C (K5: b=T+100)
          {{0x01, 40, 0}, {0x06, 100, 117}, {0x05, 10, 117}, {0x05, 10, 114}},
-         // Grp5: RPM=0, Load=0.0%, Speed=0.0km/h, PartThrottle (label idx 0)
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x07, 100, 0}, {0x0E, 0, 0}},
+         // Grp5: RPM=0, Load=0.0%, Speed=0.0km/h, PartThrottle (label idx 1)
+         {{0x01, 40, 0}, {0x21, 10, 0}, {0x07, 100, 0}, {0x0E, 0, 1}},
          // Grp6: RPM=0, Load=0.0%, 14.0°C, Lambda=-1.0% (placeholder 0) (K5: b=T+100)
          {{0x01, 40, 0}, {0x21, 10, 0}, {0x05, 10, 114}, {0x02, 10, 0}},
          // Grp7-9: empty → group reading with zero fields
@@ -172,12 +174,13 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
          // Grp12-13: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
-         // Grp14: RPM=0, Load=0.0%, 0.0(no unit), Enabled (label idx 1)
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x0E, 0, 0}, {0x0E, 0, 1}},
-         // Grp15: 0.0, 0.0, 0.0, Enabled
-         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 1}},
-         // Grp16: 0.0, empty, empty, Enabled
-         {{0x0E, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x0E, 0, 1}},
+         // Grp14: RPM=0, Load=0.0%, misfire counter=0, recognition=active (idx 0 of
+         // active/inactive)
+         {{0x01, 40, 0}, {0x21, 10, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}},
+         // Grp15: misfire cyl1=0, cyl2=0, cyl3=0, recognition=active
+         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}},
+         // Grp16: misfire cyl4=0, empty, empty, recognition=active
+         {{0x0E, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x0E, 0, 0}},
          // Grp17: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          // Grp18: RPM=0, RPM=0, Lambda=0.0%, Lambda=0.0%
@@ -188,9 +191,9 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
          {{0x1A, 10, 127}, {0x1A, 10, 127}, {0x1A, 10, 127}, {0x1A, 10, 127}},
          // Grp21: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
-         // Grp22: RPM=0, Load=0.0%, SteerAngle=0.0°, SteerAngle=0.0°
+         // Grp22: RPM=0, Load=0.0%, cyl1 ign.delay=0.0°, cyl2 ign.delay=0.0°
          {{0x01, 40, 0}, {0x21, 10, 0}, {0x1A, 10, 127}, {0x1A, 10, 127}},
-         // Grp23: RPM=0, Load=0.0%, SteerAngle=0.0°, SteerAngle=0.0°
+         // Grp23: RPM=0, Load=0.0%, cyl3 ign.delay=0.0°, cyl4 ign.delay=0.0°
          {{0x01, 40, 0}, {0x21, 10, 0}, {0x1A, 10, 127}, {0x1A, 10, 127}},
      }},
     // 0x03 ABS/ESP — 1C0 907 379
@@ -267,8 +270,8 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
          {{0x05, 10, 100}, {0x05, 10, 107}, {0x05, 10, 100}, {0x21, 10, 0}},
          // Grp7: OutletPanel=0.0(raw), FloorOutlet=5.0°C, PanelNearLCD=3.0°C, N/A (K5: b=T+100)
          {{0x0E, 0, 0}, {0x05, 10, 105}, {0x05, 10, 103}, {0x00, 0, 0}},
-         // Grp8: Spec.V-blower=0.00V, Meas.V-blower=0.28V (A=28,B=10: 0.28V), Meas.V-A/C=12.18V,
-         // empty
+         // Grp8: Spec.V-blower=0.00V, Meas.V-blower=0.28V (A=28,B=10: 0.28V), Meas.V-A/C=12.2V
+         // (closest to captured 12.18V with uint8_t B), empty
          {{0x06, 100, 0}, {0x06, 28, 10}, {0x06, 100, 122}, {0x00, 0, 0}},
          // Grp9-23: unused padding
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
@@ -422,48 +425,51 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
       {0, 0, 0},
       {0, 0, 0}},
      {
-         // Grp1: RearWinLock=OFF(0), DDLockSw=NotOper(0), DDWindowMotor=Still(0), N/A
-         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x00, 0, 0}},
-         // Grp2: window switches — all Not Oper (0)
-         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}},
-         // Grp3 (drivers door): DDKeySw=NotOper, LatchProtect=binary 0b01,
-         // LatchFeedback=Unlocked(0), CLFeedback=NotSafe(0)
-         {{0x0E, 0, 0}, {0x0F, 0, 0x01}, {0x0E, 0, 0}, {0x0E, 0, 0}},
-         // Grp4 (mirrors): DDMirrorUD=NotOper, DDMirrorLR=NotOper, DDFolding=NotInstalled, N/A
-         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x00, 0, 0}},
-         // Grp5 (pass door): PassWindowSw=NotOper, PassLockSw=NotOper, PassFolding=NotInstalled,
-         // N/A
-         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x00, 0, 0}},
-         // Grp6 (pass door): PassKeySw=NotOper, LatchProtect=binary 0b01, LatchFeedback=Unlocked,
-         // CLFeedback=NotSafe
-         {{0x0E, 0, 0}, {0x0F, 0, 0x01}, {0x0E, 0, 0}, {0x0E, 0, 0}},
-         // Grp7 (RR door): RRWindowSw=NotOper, LatchProtect=binary 0b01, LatchFeedback=Unlocked,
-         // CLFeedback=NotSafe
-         {{0x0E, 0, 0}, {0x0F, 0, 0x01}, {0x0E, 0, 0}, {0x0E, 0, 0}},
-         // Grp8 (LR door): LRWindowSw=NotOper, LatchProtect=binary 0b01, LatchFeedback=Unlocked,
-         // CLFeedback=NotSafe
-         {{0x0E, 0, 0}, {0x0F, 0, 0x01}, {0x0E, 0, 0}, {0x0E, 0, 0}},
+         // Grp1: ChildSafety=OFF(no=1), DDLockSw=NotOper(2), WindowMotor=Still(stop=1), N/A
+         {{0x0E, 0, 1}, {0x0E, 0, 2}, {0x0E, 0, 1}, {0x00, 0, 0}},
+         // Grp2: window switches — all Not Oper
+         // E40 driver: auto.open/auto.close/man.open/man.close/close not operated/implausible → idx
+         // 4
+         // E81/E53/E55: autom.open/autom.close/man.open/man.close/not operated/implausible → idx 4
+         {{0x0E, 0, 4}, {0x0E, 0, 4}, {0x0E, 0, 4}, {0x0E, 0, 4}},
+         // Grp3 (driver door): DDKeySw=NotOper(2), LatchProtect=binary 0b01,
+         // CLFeedback=Unlocked(1), SafeFeedback=NotSafe(1)
+         {{0x0E, 0, 2}, {0x10, 0, 0x01}, {0x0E, 0, 1}, {0x0E, 0, 1}},
+         // Grp4 (mirrors): MirrorUD=NotOper(4), MirrorLR=NotOper(3), Folding=NotInstalled(2), N/A
+         {{0x0E, 0, 4}, {0x0E, 0, 3}, {0x0E, 0, 2}, {0x00, 0, 0}},
+         // Grp5 (pass door): PassWindowSw=NotOper(4), PassLockSw=NotOper(2),
+         // PassFolding=NotInstalled(2), N/A
+         {{0x0E, 0, 4}, {0x0E, 0, 2}, {0x0E, 0, 2}, {0x00, 0, 0}},
+         // Grp6 (pass door): PassKeySw=NotOper(2), LatchProtect=binary 0b01,
+         // CLFeedback=Unlocked(1), SafeFeedback=NotSafe(1)
+         {{0x0E, 0, 2}, {0x10, 0, 0x01}, {0x0E, 0, 1}, {0x0E, 0, 1}},
+         // Grp7 (RR door): RRWindowSw=NotOper(4), LatchProtect=binary 0b01,
+         // CLFeedback=Unlocked(1), SafeFeedback=NotSafe(1)
+         {{0x0E, 0, 4}, {0x10, 0, 0x01}, {0x0E, 0, 1}, {0x0E, 0, 1}},
+         // Grp8 (RL door): RLWindowSw=NotOper(4), LatchProtect=binary 0b01,
+         // CLFeedback=Unlocked(1), SafeFeedback=NotSafe(1)
+         {{0x0E, 0, 4}, {0x10, 0, 0x01}, {0x0E, 0, 1}, {0x0E, 0, 1}},
          // Grp9 (signals): InstLightSig=0.0%, CarSpeed=0.0km/h, KeyRemoteSig=0b00000000,
-         // InteriorMon=NotInstalled(0)
-         {{0x21, 10, 0}, {0x07, 100, 0}, {0x0F, 0, 0x00}, {0x0E, 0, 0}},
-         // Grp10 (signals): SContact=Activated(1), MirrorHeat=OFF(0), TrunkLock=NotOper(0),
-         // Term15=ON(1)
-         {{0x0E, 0, 1}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 1}},
-         // Grp11 (signals): HoodRadioSw=Closed(1), TrunkLatchSw=Closed(1), SunroofSync=Yes(1),
-         // CLTempSw=N/A(0)
-         {{0x0E, 0, 1}, {0x0E, 0, 1}, {0x0E, 0, 1}, {0x0E, 0, 0}},
-         // Grp12 (CAN): BusOK(1), FrOptEquip=binary, RrOptEquip=binary, EmptyOptEquip(0)
-         {{0x0E, 0, 1}, {0x0F, 0, 0xFF}, {0x0F, 0, 0xFF}, {0x0E, 0, 0}},
-         // Grp13 (remotes): no value × 3, KeyNumber=0
+         // InteriorMon=NotInstalled(2 in yes/no/not installed)
+         {{0x21, 10, 0}, {0x07, 100, 0}, {0x10, 0, 0x00}, {0x0E, 0, 2}},
+         // Grp10 (signals): SContact=operated(0), MirrorHeat=off(1),
+         // TrunkKeySw=not operated(2), Term15=on(0)
+         {{0x0E, 0, 0}, {0x0E, 0, 1}, {0x0E, 0, 2}, {0x0E, 0, 0}},
+         // Grp11 (signals): HoodSw=not operated(1)=closed, TrunkContact=closed(1),
+         // SunroofReleased=yes(0), N/A
+         {{0x0E, 0, 1}, {0x0E, 0, 1}, {0x0E, 0, 0}, {0x0E, 0, 0}},
+         // Grp12 (CAN): BusOK(1), FrDoorModules=binary, RrDoorModules=binary, AddEquip=Memory(0)
+         {{0x0E, 0, 1}, {0x10, 0, 0xFF}, {0x10, 0, 0xFF}, {0x0E, 0, 0}},
+         // Grp13 (remotes): OK(0) × 3, KeyNumber=0
          {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}},
-         // Grp14 (CCM): Term30=12.32V, RearUnlatch=NotOper(0), InteriorMon=NotInstalled(0),
-         // ThermoProtect=binary 0b00011111
-         {{0x06, 100, 123}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x0F, 0, 0x1F}},
+         // Grp14 (CCM): Term30=12.3V, RearUnlatch=not operated(0),
+         // InteriorMonSw=not installed(2), ThermoProtect=binary 0b00011111
+         {{0x06, 100, 123}, {0x0E, 0, 0}, {0x0E, 0, 2}, {0x10, 0, 0x1F}},
          // Grp15 (alarm): Last=16, 2nd=4, 3rd=128, 4th=128
          {{0x0E, 0, 16}, {0x0E, 0, 4}, {0x0E, 0, 128}, {0x0E, 0, 128}},
-         // Grp16 (auto locks): ImobKeyRecogn=NotInstalled(0), AutoIntLock=NotOper(0),
-         // RearLatchDetent=Closed(1), N/A
-         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 1}, {0x00, 0, 0}},
+         // Grp16 (auto locks): ImobKeyRecogn=not installed(2), AutoLockSw=not oper.(1),
+         // RearDetent=closed(1), N/A
+         {{0x0E, 0, 2}, {0x0E, 0, 1}, {0x0E, 0, 1}, {0x00, 0, 0}},
          // Grp17-23: unused padding
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
@@ -768,7 +774,7 @@ bool KWP_send_group_reading(uint8_t group)
         buf[9] = 0x02;
         buf[10] = 10;
         buf[11] = 0; // 0.0% lambda
-        buf[12] = 0x0F;
+        buf[12] = 0x10;
         buf[13] = 0;
         buf[14] = 0xB2; // readiness bits 10110010
     }
@@ -834,12 +840,326 @@ bool KWP_send_group_reading(uint8_t group)
         buf[6] = 0x07;
         buf[7] = 100;
         buf[8] = (uint8_t)speed; // CarSpeed
-        buf[9] = 0x0F;
+        buf[9] = 0x10;
         buf[10] = 0;
         buf[11] = 0x00; // KeyRemoteSig bits
         buf[12] = 0x0E;
         buf[13] = 0;
-        buf[14] = 0; // InteriorMon: not installed
+        buf[14] = 2; // InteriorMon: not installed (idx 2 of yes/no/not installed)
+    }
+    else if (current_addr == 0x01 && group > 23)
+    {
+        // Engine ECU groups 30–125 (all [verify] from label file 036-906-034-APE)
+        uint16_t rpm = get_simulated_rpm();
+        uint8_t rpm_b = (uint8_t)(rpm / 8);
+        int8_t coolant = get_simulated_coolant_temp();
+
+        switch (group)
+        {
+            case 30: // O2 sensor status bits: 1xx=heater,x1x=ready,xx1=lambda
+                buf[3] = 0x10;
+                buf[4] = 0;
+                buf[5] = 0x07; // B1-S1 spec: 111
+                buf[6] = 0x10;
+                buf[7] = 0;
+                buf[8] = 0x06; // B1-S2 spec: 110
+                break;
+            case 32: // Lambda self-adaptation (negative not representable → 0.0%)
+                buf[3] = 0x02;
+                buf[4] = 10;
+                buf[5] = 0;
+                buf[6] = 0x02;
+                buf[7] = 10;
+                buf[8] = 0;
+                break;
+            case 33: // Lambda control + O2 sensor voltage
+                buf[3] = 0x02;
+                buf[4] = 10;
+                buf[5] = 0; // lambda control 0.0%
+                buf[6] = 0x06;
+                buf[7] = 50;
+                buf[8] = 10; // O2 voltage 0.50V (50*10*0.001)
+                break;
+            case 34: // O2 sensor aging test (B1-S1)
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x21;
+                buf[7] = 10;
+                buf[8] = 0; // exhaust temp (cold)
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 0; // dynamic factor 0.0 s
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // Test OFF (Test ON/Test OFF/B1-S1 OK/not OK)
+                break;
+            case 36: // B1-S2 sensor readiness
+                buf[3] = 0x06;
+                buf[4] = 50;
+                buf[5] = 10; // B1-S2 voltage 0.50V
+                buf[6] = 0x0E;
+                buf[7] = 0;
+                buf[8] = 1; // Test OFF (Test ON/Test OFF/B1-S2 not OK/OK)
+                break;
+            case 37: // B1-S2 diagnostic
+                buf[3] = 0x21;
+                buf[4] = 10;
+                buf[5] = 0; // engine load 0.0%
+                buf[6] = 0x06;
+                buf[7] = 50;
+                buf[8] = 10; // B1-S2 voltage 0.50V
+                // pos 3 empty
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // Test OFF
+                break;
+            case 41: // O2 heater resistance
+                buf[3] = 0x14;
+                buf[4] = 10;
+                buf[5] = 50; // B1-S1: 5.0 Ohm (10*50*0.1)
+                buf[6] = 0x0E;
+                buf[7] = 0;
+                buf[8] = 0; // heater condition
+                buf[9] = 0x14;
+                buf[10] = 10;
+                buf[11] = 50; // B1-S2: 5.0 Ohm
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 0; // heater condition
+                break;
+            case 46: // Catalytic converter efficiency test
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x21;
+                buf[7] = 10;
+                buf[8] = 0; // cat temp 0.0 (cold)
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 0; // amplitude 0.0%
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // Test OFF
+                break;
+            case 50: // Speed regulation
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x01;
+                buf[7] = 40;
+                buf[8] = 100; // target 800 RPM (40*100*0.2)
+                buf[9] = 0x0E;
+                buf[10] = 0;
+                buf[11] = 1; // A/C-Low (A/C-High/A/C-Low)
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // Compr.OFF (Compr.ON/Compr.OFF)
+                break;
+            case 54: // Throttle and pedal sensors
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x0E;
+                buf[7] = 0;
+                buf[8] = 1; // Partial Throttle
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 0; // acc pedal pos 0.0%
+                buf[12] = 0x21;
+                buf[13] = 10;
+                buf[14] = 6; // TDAS1 (G187) 6.0%
+                break;
+            case 55: // Idle regulator
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x02;
+                buf[7] = 10;
+                buf[8] = 0; // idle regulator 0.0%
+                buf[9] = 0x02;
+                buf[10] = 10;
+                buf[11] = 0; // self-adaptation 0.0%
+                buf[12] = 0x10;
+                buf[13] = 0;
+                buf[14] = 0x00; // load status bits
+                break;
+            case 56: // Idle torque regulation
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x01;
+                buf[7] = 40;
+                buf[8] = 100; // target 800 RPM
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 0; // idle regulator 0.0 Nm
+                buf[12] = 0x10;
+                buf[13] = 0;
+                buf[14] = 0x00; // load status bits
+                break;
+            case 60: // EPC throttle adaptation
+                buf[3] = 0x21;
+                buf[4] = 10;
+                buf[5] = 10; // TDAS1 10.0% (min spec)
+                buf[6] = 0x21;
+                buf[7] = 10;
+                buf[8] = 85; // TDAS2 85.0% (max spec, inverse)
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 12; // steps counter 12 (max = full adapt)
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // ADP OK (ADP runs/ADP OK/ADP ERROR)
+                break;
+            case 61: // EPC system status
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x06;
+                buf[7] = 100;
+                buf[8] = 117; // battery 11.70V
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 6; // TDAS1 6.0% (idle position)
+                buf[12] = 0x10;
+                buf[13] = 0;
+                buf[14] = 0x00; // load status bits
+                break;
+            case 62: // All throttle/pedal sensors
+                buf[3] = 0x21;
+                buf[4] = 10;
+                buf[5] = 6; // TDAS1 (G187) 6.0%
+                buf[6] = 0x21;
+                buf[7] = 10;
+                buf[8] = 94; // TDAS2 (G188) 94.0% (inverse)
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 6; // throttle pos (G79) 6.0%
+                buf[12] = 0x21;
+                buf[13] = 10;
+                buf[14] = 0; // acc pedal sensor 2 (G185) 0.0%
+                break;
+            case 70: // Evaporative emissions (tank ventilation)
+                buf[3] = 0x21;
+                buf[4] = 10;
+                buf[5] = 0; // TVV opening 0.0%
+                buf[6] = 0x02;
+                buf[7] = 10;
+                buf[8] = 0; // lambda diag 0.0%
+                buf[9] = 0x17;
+                buf[10] = 100;
+                buf[11] = 253; // intake pressure 1012 mbar
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // Test OFF
+                break;
+            case 74: // EGR valve adaptation
+                buf[3] = 0x06;
+                buf[4] = 100;
+                buf[5] = 3; // min pos 0.3V (spec min)
+                buf[6] = 0x06;
+                buf[7] = 100;
+                buf[8] = 29; // max pos 2.9V (spec min)
+                buf[9] = 0x06;
+                buf[10] = 100;
+                buf[11] = 3; // actual 0.3V
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // ADP OK (ADP run/ADP OK/ADP ERROR)
+                break;
+            case 75: // EGR test
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x17;
+                buf[7] = 100;
+                buf[8] = 253; // intake pressure 1012 mbar
+                buf[9] = 0x17;
+                buf[10] = 100;
+                buf[11] = 0; // pressure diff 0.0 mbar
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // Test OFF
+                break;
+            case 99: // OBD compatibility
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x05;
+                buf[7] = 10;
+                buf[8] = (uint8_t)(coolant + 100);
+                buf[9] = 0x02;
+                buf[10] = 10;
+                buf[11] = 0; // O2 control 0.0%
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 0; // ON (ON/OFF idx 0)
+                break;
+            case 100: // OBD readiness (VCDS readiness screen reads this group)
+            {
+                unsigned long elapsed_s = (millis() - sim_state.start_ms) / 1000;
+                uint8_t elapsed_min = (elapsed_s / 60 > 255) ? 255 : (uint8_t)(elapsed_s / 60);
+                buf[3] = 0x10;
+                buf[4] = 0;
+                buf[5] = 0xA5; // readiness bits 10100101
+                buf[6] = 0x05;
+                buf[7] = 10;
+                buf[8] = (uint8_t)(coolant + 100); // coolant temp
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = elapsed_min; // minutes since start
+                buf[12] = 0x10;
+                buf[13] = 0;
+                buf[14] = 0x00; // OBD status flags
+                break;
+            }
+            case 120: // Traction control (ASR/TCS)
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x01;
+                buf[7] = 40;
+                buf[8] = 100; // target 800 RPM
+                buf[9] = 0x01;
+                buf[10] = 40;
+                buf[11] = rpm_b; // actual RPM
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // ASR not active
+                break;
+            case 122: // Transmission torque reduction
+                buf[3] = 0x01;
+                buf[4] = 40;
+                buf[5] = rpm_b;
+                buf[6] = 0x01;
+                buf[7] = 40;
+                buf[8] = 100; // target 800 RPM
+                buf[9] = 0x01;
+                buf[10] = 40;
+                buf[11] = rpm_b; // actual RPM
+                buf[12] = 0x0E;
+                buf[13] = 0;
+                buf[14] = 1; // No torque red.
+                break;
+            case 125: // CAN powertrain bus status
+                buf[3] = 0x21;
+                buf[4] = 10;
+                buf[5] = 10; // brake electronics 1.0 (OK)
+                buf[6] = 0x21;
+                buf[7] = 10;
+                buf[8] = 10; // transmission 1.0 (OK)
+                buf[9] = 0x21;
+                buf[10] = 10;
+                buf[11] = 10; // instrument cluster 1.0 (OK)
+                buf[12] = 0x21;
+                buf[13] = 10;
+                buf[14] = 10; // airbag 1.0 (OK)
+                break;
+            default:
+                // unimplemented group: leave buf zeroed → sends empty 0xE7
+                break;
+        }
     }
     else if (group <= current_ecu.num_groups)
     {
