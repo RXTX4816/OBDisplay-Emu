@@ -487,9 +487,11 @@ uint8_t current_addr = 0x00; // decoded from 5-baud init
 struct SimState
 {
     unsigned long start_ms;
-    unsigned long last_dist_ms; // last time distance/fuel were integrated
-    float distance_km;          // accumulated travel distance since connect
-    float fuel_L;               // current fuel level, decreases with distance
+    unsigned long last_dist_ms;        // legacy, unused
+    float distance_km;                 // accumulated travel distance since connect
+    float fuel_L;                      // current fuel level, decreases with distance
+    unsigned long last_odo_update_ms;  // last odometer increment
+    unsigned long last_fuel_update_ms; // last fuel decrement
 } sim_state;
 
 bool awake = false;
@@ -718,18 +720,28 @@ bool KWP_send_group_reading(uint8_t group)
     }
     else if (current_addr == 0x17 && group == 2)
     {
-        // Grp2: Odometer(km), FuelLevel, FuelSenderRes=93Ohm, AmbientTemp=20°C
-        // Integrate speed over time since last read (trapezoidal, ~300ms intervals)
+        // Deterministic: +1 km every 3s (max 444444), -1L fuel every 10s (min 0)
         unsigned long now_ms = millis();
-        float dt_h = (float)(now_ms - sim_state.last_dist_ms) / 3600000.0f;
-        float speed = get_simulated_speed_kmh();
-        float delta_km = speed * dt_h;
-        sim_state.distance_km += delta_km;
-        // Fuel: 8 L/100 km consumption
-        sim_state.fuel_L -= delta_km * 0.08f;
+        // Odometer logic
+        if ((uint32_t)sim_state.distance_km < 444444 &&
+            (now_ms - sim_state.last_odo_update_ms) >= 3000)
+        {
+            sim_state.distance_km += 1.0f;
+            sim_state.last_odo_update_ms +=
+                3000 * ((now_ms - sim_state.last_odo_update_ms) / 3000); // catch up if polled late
+        }
+        if ((uint32_t)sim_state.distance_km > 444444)
+            sim_state.distance_km = 444444;
+
+        // Fuel logic
+        if ((int)sim_state.fuel_L > 0 && (now_ms - sim_state.last_fuel_update_ms) >= 10000)
+        {
+            sim_state.fuel_L -= 1.0f;
+            sim_state.last_fuel_update_ms += 10000 * ((now_ms - sim_state.last_fuel_update_ms) /
+                                                      10000); // catch up if polled late
+        }
         if (sim_state.fuel_L < 0.0f)
             sim_state.fuel_L = 0.0f;
-        sim_state.last_dist_ms = now_ms;
 
         // Odometer: type 0x24, formula: km = A*2560 + B*10. Max ~653350 km.
         uint32_t raw_km = 50000UL + (uint32_t)sim_state.distance_km;
@@ -1719,10 +1731,13 @@ bool connect()
     connected = true;
 
     // Initialize simulation state
-    sim_state.start_ms = millis();
-    sim_state.last_dist_ms = millis();
+    unsigned long now = millis();
+    sim_state.start_ms = now;
+    sim_state.last_dist_ms = now; // legacy, unused
     sim_state.distance_km = 0.0f;
     sim_state.fuel_L = 55.0f; // full tank
+    sim_state.last_odo_update_ms = now;
+    sim_state.last_fuel_update_ms = now;
 
     g.setColor(TFT_YELLOW);
     g.print("connected", RIGHT, rows[7]);
