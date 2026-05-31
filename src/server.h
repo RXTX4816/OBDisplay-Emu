@@ -487,8 +487,9 @@ uint8_t current_addr = 0x00; // decoded from 5-baud init
 struct SimState
 {
     unsigned long start_ms;
-    uint16_t odometer_km;
-    uint16_t fuel_tenth_L; // 550 = 55L full
+    unsigned long last_dist_ms; // last time distance/fuel were integrated
+    float distance_km;          // accumulated travel distance since connect
+    float fuel_L;               // current fuel level, decreases with distance
 } sim_state;
 
 bool awake = false;
@@ -718,24 +719,35 @@ bool KWP_send_group_reading(uint8_t group)
     else if (current_addr == 0x17 && group == 2)
     {
         // Grp2: Odometer(km), FuelLevel, FuelSenderRes=93Ohm, AmbientTemp=20°C
-        // K4 formula: abs(b-127)*0.01*a → fuel_L = abs(b-127)*0.01*100, so b = 127 + fuel_L
-        // K5 formula: a*(b-100)*0.1 → T = a*(b-100)*0.1, so b = T + 100 (with a=10)
-        unsigned long elapsed_s = (millis() - sim_state.start_ms) / 1000;
+        // Integrate speed over time since last read (trapezoidal, ~300ms intervals)
+        unsigned long now_ms = millis();
+        float dt_h = (float)(now_ms - sim_state.last_dist_ms) / 3600000.0f;
         float speed = get_simulated_speed_kmh();
-        uint16_t km_delta = (uint16_t)(speed * elapsed_s / 3600.0f);
-        uint16_t total_km = sim_state.odometer_km + km_delta;
-        uint8_t fuel_b =
-            (uint8_t)(127 + sim_state.fuel_tenth_L / 10); // K4: abs(b-127)*0.01*100 = fuel_L
+        float delta_km = speed * dt_h;
+        sim_state.distance_km += delta_km;
+        // Fuel: 8 L/100 km consumption
+        sim_state.fuel_L -= delta_km * 0.08f;
+        if (sim_state.fuel_L < 0.0f)
+            sim_state.fuel_L = 0.0f;
+        sim_state.last_dist_ms = now_ms;
+
+        // Odometer: type 0x24, formula: km = A*2560 + B*10. Max ~653350 km.
+        uint32_t raw_km = 50000UL + (uint32_t)sim_state.distance_km;
+        uint8_t odo_a = (uint8_t)(raw_km / 2560);
+        uint8_t odo_b = (uint8_t)((raw_km % 2560) / 10);
+
+        // K4 fuel: value = A * |B-127| * 0.01; with A=100: fuel_L = |B-127|; B = 127+fuel_L
+        uint8_t fuel_b = (uint8_t)(127.0f + sim_state.fuel_L);
 
         buf[3] = 0x24;
-        buf[4] = (uint8_t)(total_km >> 8);
-        buf[5] = (uint8_t)(total_km & 0xFF); // odometer
+        buf[4] = odo_a;
+        buf[5] = odo_b;
         buf[6] = 0x04;
         buf[7] = 100;
-        buf[8] = fuel_b; // fuel level (K4: abs(b-127)*0.01*100 = liters)
+        buf[8] = fuel_b; // K4: abs(b-127)*0.01*100 = liters
         buf[9] = 0x14;
         buf[10] = 10;
-        buf[11] = 93; // 93Ohm sender
+        buf[11] = 93; // 93 Ohm sender resistance
         buf[12] = 0x05;
         buf[13] = 10;
         buf[14] = 120; // 20°C ambient (K5: 10*(120-100)*0.1 = 20°C)
@@ -1478,7 +1490,12 @@ bool KWP_receive_block(uint8_t buff[], uint8_t& received_count, uint8_t& message
 {
     uint8_t recvcount = 0;
     uint8_t expected_total = 0; // total bytes including length byte
-    unsigned long timeout = millis() + TIMEOUT;
+
+    // Subtract display overhead from initial timeout so the ECU appears as fast as real hardware
+    unsigned long display_overhead_ms = scheduler.display_elapsed_us / 1000UL;
+    unsigned long timeout =
+        millis() + (display_overhead_ms < TIMEOUT ? TIMEOUT - display_overhead_ms : 0);
+    scheduler.display_elapsed_us = 0;
 
     while (true)
     {
@@ -1568,10 +1585,18 @@ void reset()
 
     Serial.println("Waiting 3 sec");
     delay(3000);
+    // Stop renderer first so it can't repaint stale buffers onto the cleared screen
+    scheduler_init();
     for (uint8_t i = 4; i < 20; i++)
-    {
         clearRow(i);
+    for (uint8_t i = 0; i < STATUS_LOG_SIZE; i++)
+    {
+        _status_log[i][0] = '\0';
+        _status_log_prev[i][0] = '\0';
     }
+    _status_count = 0;
+    _status_log_initialized = false;
+    display_ecu_info(0, 0);
     Serial1.end();
 }
 
@@ -1695,14 +1720,21 @@ bool connect()
 
     // Initialize simulation state
     sim_state.start_ms = millis();
-    sim_state.odometer_km = 0;
-    sim_state.fuel_tenth_L = 550; // 55 liters full
+    sim_state.last_dist_ms = millis();
+    sim_state.distance_km = 0.0f;
+    sim_state.fuel_L = 55.0f; // full tank
 
     g.setColor(TFT_YELLOW);
     g.print("connected", RIGHT, rows[7]);
     g.setColor(font_color);
     draw_line_on_row(8);
     draw_line_on_row(12);
+    display_ecu_info(current_addr, baud);
+    init_status_log();
+    scheduler_init();
+    char conn_msg[STATUS_LINE_LEN + 1];
+    snprintf(conn_msg, sizeof(conn_msg), "CONNECTED 0x%02X", current_addr);
+    push_status(conn_msg);
     g.setColor(TFT_GREEN);
     Serial.println("------------------------------------------");
     Serial.println("|               connected                |");

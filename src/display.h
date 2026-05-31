@@ -28,8 +28,8 @@ word color_hide = TFT_YELLOW;
 word color_focus = TFT_CYAN;
 uint8_t _row_print_received_last = _row_print_received;
 uint8_t _col_print_received_last = _col_print_received;
-String _current_message_type = "00";
-String _last_message_type = "00";
+char _current_message_type[3] = "00";
+char _last_message_type[3] = "00";
 void increment_row_print()
 {
     _row_print_received_last = _row_print_received;
@@ -59,11 +59,9 @@ void increment_col_print()
 
 void print_message_type(uint8_t message_type)
 {
-    char received_message_type[3];
-    snprintf(received_message_type, sizeof(received_message_type), "%02X", message_type);
-    _current_message_type = received_message_type;
+    snprintf(_current_message_type, sizeof(_current_message_type), "%02X", message_type);
     // Recolor old value
-    if (!_last_message_type.equals("00"))
+    if (_last_message_type[0] != '0' || _last_message_type[1] != '0')
     {
         g.setColor(color_hide);
         if (_col_print_received > 0)
@@ -74,10 +72,9 @@ void print_message_type(uint8_t message_type)
     }
 
     g.setColor(color_focus);
-    // Print current value
     g.print(_current_message_type, cols[_col_print_received], rows[_row_print_received]);
 
-    _last_message_type = _current_message_type;
+    memcpy(_last_message_type, _current_message_type, 3);
     g.setColor(font_color);
     increment_col_print();
 }
@@ -85,7 +82,7 @@ void print_message_type(uint8_t message_type)
 void clearRow(byte row)
 {
     g.setColor(back_color);
-    g.print(String("                              "), LEFT, rows[row]);
+    g.print((char*)"                              ", LEFT, rows[row]);
     g.setColor(font_color);
 }
 
@@ -94,9 +91,100 @@ void draw_line_on_row(byte row)
     g.drawLine(0, rows[row], WIDTH, rows[row]);
 }
 
+// Status log — bottom 6 rows (14-19), minimal non-blocking updates
+#define STATUS_LOG_SIZE 6
+#define STATUS_LINE_LEN 20
+char _status_log[STATUS_LOG_SIZE][STATUS_LINE_LEN + 1];
+char _status_log_prev[STATUS_LOG_SIZE][STATUS_LINE_LEN + 1];
+uint8_t _status_count = 0; // Lines filled so far (0..STATUS_LOG_SIZE)
+bool _status_log_initialized = false;
+
+void init_status_log()
+{
+    for (uint8_t i = 0; i < STATUS_LOG_SIZE; i++)
+    {
+        _status_log[i][0] = '\0';
+        _status_log_prev[i][0] = '\0';
+    }
+    _status_count = 0;
+    _status_log_initialized = true;
+}
+
+void push_status(const char* msg)
+{
+    if (!_status_log_initialized)
+        return;
+    if (_status_count < STATUS_LOG_SIZE)
+    {
+        // Still filling: append to next free slot — only that one line is dirty
+        strncpy(_status_log[_status_count], msg, STATUS_LINE_LEN);
+        _status_log[_status_count][STATUS_LINE_LEN] = '\0';
+        _status_count++;
+    }
+    else
+    {
+        // Full: scroll up, write newest at bottom — all lines dirty
+        for (uint8_t i = 0; i < STATUS_LOG_SIZE - 1; i++)
+            memcpy(_status_log[i], _status_log[i + 1], STATUS_LINE_LEN + 1);
+        strncpy(_status_log[STATUS_LOG_SIZE - 1], msg, STATUS_LINE_LEN);
+        _status_log[STATUS_LOG_SIZE - 1][STATUS_LINE_LEN] = '\0';
+    }
+    scheduler_mark_display_dirty();
+}
+
+// Render one changed line per call — clear then print the full string at LEFT.
+// Skips unchanged lines. Called from the main loop between KWP operations.
+bool scheduler_render_next_word()
+{
+    if (!scheduler.rendering_in_progress)
+        return true;
+
+    // Scan forward from render_line_idx to find next changed line
+    while (scheduler.render_line_idx < STATUS_LOG_SIZE)
+    {
+        const char* line = _status_log[scheduler.render_line_idx];
+        const char* line_prev = _status_log_prev[scheduler.render_line_idx];
+
+        if (strcmp(line, line_prev) == 0)
+        {
+            // Unchanged, skip
+            scheduler.render_line_idx++;
+            continue;
+        }
+
+        // Changed: clear and redraw this line atomically
+        g.setColor(back_color);
+        g.print("                              ", LEFT, rows[14 + scheduler.render_line_idx]);
+        g.setColor(font_color);
+        if (line[0] != '\0')
+            g.print(const_cast<char*>(line), LEFT, rows[14 + scheduler.render_line_idx]);
+
+        strncpy(_status_log_prev[scheduler.render_line_idx], line, STATUS_LINE_LEN + 1);
+        scheduler.render_line_idx++;
+        return false; // One line per call, yield back to loop
+    }
+
+    // All lines processed
+    scheduler.render_line_idx = 0;
+    scheduler.rendering_in_progress = false;
+    return true;
+}
+
+// Top-bar ECU info: shows address + baud, or placeholders when disconnected
+void display_ecu_info(uint8_t addr, uint16_t baud)
+{
+    clearRow(0);
+    char buf[32];
+    if (addr == 0x00)
+        snprintf(buf, sizeof(buf), "0xXX  XXXXX  EMU");
+    else
+        snprintf(buf, sizeof(buf), "0x%02X  %5u  EMU", addr, baud);
+    g.print(buf, CENTER, rows[0]);
+}
+
 void init_status_bar()
 {
-    g.print("0x17 10400 EMU", CENTER, rows[0]);
+    display_ecu_info(0, 0);
     g.print("BLOCK:     | AWAKE:  ", LEFT, rows[1]);
     g.print("CON:   | AVA:     ", LEFT, rows[2]);
     draw_line_on_row(3);
@@ -109,7 +197,7 @@ void init_status_bar()
 uint8_t display_block_counter = 0;
 bool display_awake = false;
 bool display_connected = false;
-bool display_available = false;
+uint8_t display_available = 0;
 void display_status_bar(uint8_t block_counter, bool awake, bool connected)
 {
     if (display_block_counter != block_counter)
@@ -204,6 +292,7 @@ void reset_display()
     _row_print_received = _ROW_PRINT_RECEIVED_DEFAULT;
     _col_print_received_last = _col_print_received;
     _row_print_received_last = _row_print_received;
+    _status_log_initialized = false;
 }
 
 void error_timeout(uint16_t ms)
