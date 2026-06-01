@@ -114,7 +114,7 @@ void load_ecu_def(const ECUDef* ecu_progmem, ECUDef& ecu_ram)
 }
 
 // Measurement value encoding formulas (VCDS/KWP1281 standard):
-// 0x01: rpm   = A * B * 0.2          (A=40, B=rpm/8)
+// 0x01: rpm   = A * B * 0.2          (A=160, B=rpm/32; max 8160 RPM)
 // 0x02: %     = A * B * 0.002        (placeholder for fuel trim; negative not representable)
 // 0x04: -     = A * |B-127| * 0.01   (K4; A=100 for fuel level: |B-127| = liters)
 //              OR A * B * 0.001       (raw form used for some sensors, e.g. lateral accel)
@@ -484,14 +484,34 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
 ECUDef current_ecu;          // loaded from PROGMEM on connect
 uint8_t current_addr = 0x00; // decoded from 5-baud init
 
+// VW 02J gearbox — Golf 4 1.6 16V, 195/65 R15 (circumference = 1.992 m)
+// km/h per RPM = (0.001992 * 60) / (gear_ratio * 4.238)
+static const float KMH_PER_RPM[6] = {
+    0.0f,      // index 0 unused
+    0.007468f, // gear 1  (ratio 3.778)
+    0.013314f, // gear 2  (ratio 2.118)
+    0.020737f, // gear 3  (ratio 1.360)
+    0.029045f, // gear 4  (ratio 0.971)
+    0.037300f, // gear 5  (ratio 0.756)
+};
+// Upshift speed thresholds (km/h): index i = shift from gear i+1 → i+2
+static const float UPSHIFT_KMH[4] = {26.0f, 48.0f, 70.0f, 90.0f};
+
+// Drive cycle: paired (time_s, speed_kmh) waypoints, linearly interpolated.
+// Narrative: idle → accel through gears → cruise at 120 → step-down decel → idle → repeat.
+static const uint8_t DRIVE_CYCLE_T[] = {0,  3,  8,  12, 18, 24, 28,  34,  40,  46,  52,  56,  62,
+                                        68, 72, 78, 84, 90, 96, 100, 106, 112, 116, 120, 125, 130};
+static const uint8_t DRIVE_CYCLE_V[] = {0,  0,   30,  30,  50,  50, 35, 35, 60, 60, 90, 90, 70,
+                                        70, 100, 100, 120, 120, 90, 90, 60, 60, 30, 30, 0,  0};
+#define DRIVE_CYCLE_POINTS 26
+static const uint32_t DRIVE_CYCLE_PERIOD_MS = 130000UL;
+
 struct SimState
 {
     unsigned long start_ms;
-    unsigned long last_dist_ms;        // legacy, unused
-    float distance_km;                 // accumulated travel distance since connect
-    float fuel_L;                      // current fuel level, decreases with distance
-    unsigned long last_odo_update_ms;  // last odometer increment
-    unsigned long last_fuel_update_ms; // last fuel decrement
+    float distance_km;            // accumulated travel distance since connect
+    float fuel_L;                 // current fuel level, decreases with distance
+    unsigned long last_update_ms; // timestamp for dt-based odometer/fuel integration
 } sim_state;
 
 bool awake = false;
@@ -641,16 +661,40 @@ bool KWP_send_syncbytes()
 float get_simulated_speed_kmh()
 {
     unsigned long elapsed_ms = millis() - sim_state.start_ms;
+    uint32_t t_ms = (uint32_t)(elapsed_ms % DRIVE_CYCLE_PERIOD_MS);
+    uint16_t t_s_whole = (uint16_t)(t_ms / 1000UL);
+    float frac = (float)(t_ms % 1000UL) * 0.001f;
 
-    // Short idle: first 2s at 0 km/h
-    if (elapsed_ms < 2000UL)
-        return 0.0f;
+    uint8_t i = 0;
+    for (uint8_t k = 0; k < DRIVE_CYCLE_POINTS - 1; k++)
+    {
+        if (DRIVE_CYCLE_T[k + 1] <= t_s_whole)
+            i = k + 1;
+        else
+            break;
+    }
+    uint8_t next = (i + 1 < DRIVE_CYCLE_POINTS) ? i + 1 : i;
+    if (next == i)
+        return (float)DRIVE_CYCLE_V[i];
 
-    // Sine-wave 0-120 km/h, 30s period (ms resolution so polls see changes)
-    float phase = (float)(elapsed_ms % 30000UL) / 30000.0f; // 0..1
-    float angle = phase * 6.283185f;                        // 2π
-    float speed = (sinf(angle) + 1.0f) * 60.0f;             // 0..120
-    return speed;
+    float dt_seg = (float)(DRIVE_CYCLE_T[next] - DRIVE_CYCLE_T[i]);
+    float t_in = (float)(t_s_whole - DRIVE_CYCLE_T[i]) + frac;
+    float alpha = t_in / dt_seg;
+    return (float)DRIVE_CYCLE_V[i] +
+           alpha * (float)((int)DRIVE_CYCLE_V[next] - (int)DRIVE_CYCLE_V[i]);
+}
+
+static uint8_t get_current_gear(float speed_kmh)
+{
+    uint8_t gear = 1;
+    for (uint8_t g = 0; g < 4; g++)
+    {
+        if (speed_kmh >= UPSHIFT_KMH[g])
+            gear = g + 2;
+        else
+            break;
+    }
+    return gear;
 }
 
 int8_t get_simulated_coolant_temp()
@@ -670,11 +714,15 @@ int8_t get_simulated_oil_temp()
 uint16_t get_simulated_rpm()
 {
     float speed = get_simulated_speed_kmh();
-    if (speed < 5.0f)
-        return 800; // idle
-    // RPM ~= (speed/30 + 0.8) * 1000, peaks ~4800 at 120 km/h
-    uint16_t rpm = (uint16_t)((speed / 30.0f + 0.8f) * 1000.0f);
-    return rpm;
+    if (speed < 2.0f)
+        return 800;
+    uint8_t gear = get_current_gear(speed);
+    float rpm_f = speed / KMH_PER_RPM[gear];
+    if (rpm_f < 800.0f)
+        rpm_f = 800.0f;
+    if (rpm_f > 6500.0f)
+        rpm_f = 6500.0f;
+    return (uint16_t)rpm_f;
 }
 
 bool KWP_send_group_reading(uint8_t group)
@@ -709,8 +757,8 @@ bool KWP_send_group_reading(uint8_t group)
         buf[4] = 100;
         buf[5] = (uint8_t)speed; // km/h
         buf[6] = 0x01;
-        buf[7] = 40;
-        buf[8] = (uint8_t)(rpm / 8); // RPM
+        buf[7] = 160;
+        buf[8] = (uint8_t)(rpm / 32); // RPM
         // k=0x25 (37): F_B formula — stored value = b directly.
         // Normal: b=31. Fault sim: b=222 for 3 s every 15 s, starting after the first 15 s.
         buf[9] = 0x25;
@@ -726,28 +774,42 @@ bool KWP_send_group_reading(uint8_t group)
     }
     else if (current_addr == 0x17 && group == 2)
     {
-        // Deterministic: +1 km every 3s (max 444444), -1L fuel every 10s (min 0)
         unsigned long now_ms = millis();
-        // Odometer logic
-        if ((uint32_t)sim_state.distance_km < 444444 &&
-            (now_ms - sim_state.last_odo_update_ms) >= 3000)
-        {
-            sim_state.distance_km += 1.0f;
-            sim_state.last_odo_update_ms +=
-                3000 * ((now_ms - sim_state.last_odo_update_ms) / 3000); // catch up if polled late
-        }
-        if ((uint32_t)sim_state.distance_km > 444444)
-            sim_state.distance_km = 444444;
+        float dt_sec = (float)(now_ms - sim_state.last_update_ms) * 0.001f;
+        if (dt_sec > 10.0f)
+            dt_sec = 0.0f; // guard: first call or stale state after reset
+        sim_state.last_update_ms = now_ms;
 
-        // Fuel logic
-        if ((int)sim_state.fuel_L > 0 && (now_ms - sim_state.last_fuel_update_ms) >= 10000)
+        float speed = get_simulated_speed_kmh();
+
+        // Odometer: integrate speed over time
+        if (sim_state.distance_km < 444444.0f)
         {
-            sim_state.fuel_L -= 1.0f;
-            sim_state.last_fuel_update_ms += 10000 * ((now_ms - sim_state.last_fuel_update_ms) /
-                                                      10000); // catch up if polled late
+            sim_state.distance_km += speed * dt_sec / 3600.0f;
+            if (sim_state.distance_km > 444444.0f)
+                sim_state.distance_km = 444444.0f;
         }
-        if (sim_state.fuel_L < 0.0f)
-            sim_state.fuel_L = 0.0f;
+
+        // Fuel: physics-based consumption
+        if (sim_state.fuel_L > 0.0f)
+        {
+            float fuel_rate;
+            if (speed < 2.0f)
+            {
+                fuel_rate = 0.6f / 3600.0f; // idle ~0.6 L/h
+            }
+            else
+            {
+                uint16_t rpm = get_simulated_rpm();
+                // Base 7.0 L/100km + RPM load penalty + aerodynamic penalty above 100 km/h
+                float l_per_100km = 7.0f + (float)(rpm - 800) * (1.5f / 5700.0f) +
+                                    (speed > 100.0f ? (speed - 100.0f) * 0.015f : 0.0f);
+                fuel_rate = (speed / 100.0f) * l_per_100km / 3600.0f;
+            }
+            sim_state.fuel_L -= fuel_rate * dt_sec;
+            if (sim_state.fuel_L < 0.0f)
+                sim_state.fuel_L = 0.0f;
+        }
 
         // Odometer: type 0x24, formula: km = A*2560 + B*10. Max ~653350 km.
         uint32_t raw_km = 50000UL + (uint32_t)sim_state.distance_km;
@@ -796,8 +858,8 @@ bool KWP_send_group_reading(uint8_t group)
         uint16_t rpm = get_simulated_rpm();
 
         buf[3] = 0x01;
-        buf[4] = 40;
-        buf[5] = (uint8_t)(rpm / 8); // RPM
+        buf[4] = 160;
+        buf[5] = (uint8_t)(rpm / 32); // RPM
         buf[6] = 0x05;
         buf[7] = 10;
         buf[8] = 117; // 17.0°C air temp (K5: 10*(117-100)*0.1 = 17°C)
@@ -814,8 +876,8 @@ bool KWP_send_group_reading(uint8_t group)
         uint16_t rpm = get_simulated_rpm();
 
         buf[3] = 0x01;
-        buf[4] = 40;
-        buf[5] = (uint8_t)(rpm / 8); // RPM
+        buf[4] = 160;
+        buf[5] = (uint8_t)(rpm / 32); // RPM
         buf[6] = 0x17;
         buf[7] = 100;
         buf[8] = 254; // 1016 mbar (100*254*0.04)
@@ -881,7 +943,7 @@ bool KWP_send_group_reading(uint8_t group)
     {
         // Engine ECU groups 30–125 (all [verify] from label file 036-906-034-APE)
         uint16_t rpm = get_simulated_rpm();
-        uint8_t rpm_b = (uint8_t)(rpm / 8);
+        uint8_t rpm_b = (uint8_t)(rpm / 32);
         int8_t coolant = get_simulated_coolant_temp();
 
         switch (group)
@@ -912,7 +974,7 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 34: // O2 sensor aging test (B1-S1)
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x21;
                 buf[7] = 10;
@@ -960,7 +1022,7 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 46: // Catalytic converter efficiency test
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x21;
                 buf[7] = 10;
@@ -974,11 +1036,11 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 50: // Speed regulation
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x01;
-                buf[7] = 40;
-                buf[8] = 100; // target 800 RPM (40*100*0.2)
+                buf[7] = 160;
+                buf[8] = 25; // target 800 RPM (160*25*0.2)
                 buf[9] = 0x0E;
                 buf[10] = 0;
                 buf[11] = 1; // A/C-Low (A/C-High/A/C-Low)
@@ -988,7 +1050,7 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 54: // Throttle and pedal sensors
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x0E;
                 buf[7] = 0;
@@ -1002,7 +1064,7 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 55: // Idle regulator
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x02;
                 buf[7] = 10;
@@ -1016,11 +1078,11 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 56: // Idle torque regulation
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x01;
-                buf[7] = 40;
-                buf[8] = 100; // target 800 RPM
+                buf[7] = 160;
+                buf[8] = 25; // target 800 RPM (160*25*0.2)
                 buf[9] = 0x21;
                 buf[10] = 10;
                 buf[11] = 0; // idle regulator 0.0 Nm
@@ -1044,7 +1106,7 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 61: // EPC system status
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x06;
                 buf[7] = 100;
@@ -1100,7 +1162,7 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 75: // EGR test
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x17;
                 buf[7] = 100;
@@ -1114,7 +1176,7 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 99: // OBD compatibility
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x05;
                 buf[7] = 10;
@@ -1146,13 +1208,13 @@ bool KWP_send_group_reading(uint8_t group)
             }
             case 120: // Traction control (ASR/TCS)
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x01;
-                buf[7] = 40;
-                buf[8] = 100; // target 800 RPM
+                buf[7] = 160;
+                buf[8] = 25; // target 800 RPM (160*25*0.2)
                 buf[9] = 0x01;
-                buf[10] = 40;
+                buf[10] = 160;
                 buf[11] = rpm_b; // actual RPM
                 buf[12] = 0x0E;
                 buf[13] = 0;
@@ -1160,13 +1222,13 @@ bool KWP_send_group_reading(uint8_t group)
                 break;
             case 122: // Transmission torque reduction
                 buf[3] = 0x01;
-                buf[4] = 40;
+                buf[4] = 160;
                 buf[5] = rpm_b;
                 buf[6] = 0x01;
-                buf[7] = 40;
-                buf[8] = 100; // target 800 RPM
+                buf[7] = 160;
+                buf[8] = 25; // target 800 RPM (160*25*0.2)
                 buf[9] = 0x01;
-                buf[10] = 40;
+                buf[10] = 160;
                 buf[11] = rpm_b; // actual RPM
                 buf[12] = 0x0E;
                 buf[13] = 0;
@@ -1739,11 +1801,9 @@ bool connect()
     // Initialize simulation state
     unsigned long now = millis();
     sim_state.start_ms = now;
-    sim_state.last_dist_ms = now; // legacy, unused
     sim_state.distance_km = 0.0f;
     sim_state.fuel_L = 55.0f; // full tank
-    sim_state.last_odo_update_ms = now;
-    sim_state.last_fuel_update_ms = now;
+    sim_state.last_update_ms = now;
 
     g.setColor(TFT_YELLOW);
     g.print("connected", RIGHT, rows[7]);
