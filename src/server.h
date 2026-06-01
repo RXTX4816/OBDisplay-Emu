@@ -342,9 +342,9 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
       {0, 0, 0},
       {0, 0, 0}},
      {
-         // Grp1: Speed(dynamic), RPM(dynamic), OilPressure(label idx 2), Time(A=21 B=50
+         // Grp1: Speed(dynamic), RPM(dynamic), OilPressureMin(k=0x25 F_B b=31=ok), Time(A=21 B=50
          // placeholder)
-         {{0x07, 100, 0}, {0x01, 40, 0}, {0x0E, 0, 2}, {0x0E, 21, 50}},
+         {{0x07, 100, 0}, {0x01, 40, 0}, {0x25, 0, 31}, {0x0E, 21, 50}},
          // Grp2: Odometer(dynamic), FuelLevel(dynamic), FuelSenderRes=93Ohm, AmbientTemp=20°C
          // FuelLevel: K4 abs(b-127)*0.01*100=55L → B=182; AmbientTemp: K5 10*(b-100)*0.1=0°C →
          // B=100
@@ -701,7 +701,7 @@ bool KWP_send_group_reading(uint8_t group)
     // Dynamic overrides — populated before falling through to static table
     if (current_addr == 0x17 && group == 1)
     {
-        // Grp1: Speed(km/h), RPM, OilPressureIndicator(static label 2), Time(placeholder A=21 B=50)
+        // Grp1: Speed(km/h), RPM, OilPressureMin, Time(placeholder A=21 B=50)
         float speed = get_simulated_speed_kmh();
         uint16_t rpm = get_simulated_rpm();
 
@@ -711,9 +711,15 @@ bool KWP_send_group_reading(uint8_t group)
         buf[6] = 0x01;
         buf[7] = 40;
         buf[8] = (uint8_t)(rpm / 8); // RPM
-        buf[9] = 0x0E;
+        // k=0x25 (37): F_B formula — stored value = b directly.
+        // Normal: b=31. Fault sim: b=222 for 3 s every 15 s, starting after the first 15 s.
+        buf[9] = 0x25;
         buf[10] = 0;
-        buf[11] = 2; // oil pressure (label idx 2)
+        {
+            unsigned long elapsed_ms = millis() - sim_state.start_ms;
+            bool fault = elapsed_ms >= 15000UL && ((elapsed_ms - 15000UL) % 15000UL) < 3000UL;
+            buf[11] = fault ? 222 : 31;
+        }
         buf[12] = 0x0E;
         buf[13] = 21;
         buf[14] = 50; // time 21:50 (placeholder; verify encoding with real car)
