@@ -687,10 +687,10 @@ float get_simulated_speed_kmh()
 static uint8_t get_current_gear(float speed_kmh)
 {
     uint8_t gear = 1;
-    for (uint8_t g = 0; g < 4; g++)
+    for (uint8_t gi = 0; gi < 4; gi++)
     {
-        if (speed_kmh >= UPSHIFT_KMH[g])
-            gear = g + 2;
+        if (speed_kmh >= UPSHIFT_KMH[gi])
+            gear = gi + 2;
         else
             break;
     }
