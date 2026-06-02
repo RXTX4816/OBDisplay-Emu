@@ -349,9 +349,9 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
          // FuelLevel: K4 abs(b-127)*0.01*100=55L → B=182; AmbientTemp: K5 10*(b-100)*0.1=0°C →
          // B=100
          {{0x24, 0, 0}, {0x04, 100, 182}, {0x14, 10, 93}, {0x05, 10, 120}},
-         // Grp3: CoolantTemp(dynamic), OilLevel=OK(label 0), OilTemp(dynamic), N/A
+         // Grp3: CoolantTemp(dynamic), OilLevel(k=0x25 MW_B 0-255, dynamic), OilTemp(dynamic), N/A
          // K5: 10*(b-100)*0.1=T°C; 12°C → B=112, 11°C → B=111
-         {{0x05, 10, 112}, {0x0E, 0, 0}, {0x05, 10, 111}, {0x00, 0, 0}},
+         {{0x05, 10, 112}, {0x25, 0, 127}, {0x05, 10, 111}, {0x00, 0, 0}},
          // Grp4-23: unused
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
@@ -711,6 +711,13 @@ int8_t get_simulated_oil_temp()
     return (int8_t)(coolant - 15); // lags coolant by ~15°C
 }
 
+uint8_t get_simulated_oil_level()
+{
+    // Oscillates 0–255 with a ~10 s period; 127 = mid-level
+    float phase = (float)(millis() - sim_state.start_ms) / 5000.0f; // π rad/5 s → 10 s full cycle
+    return (uint8_t)(127.5f + 100.0f * sinf(phase));
+}
+
 uint16_t get_simulated_rpm()
 {
     float speed = get_simulated_speed_kmh();
@@ -834,17 +841,18 @@ bool KWP_send_group_reading(uint8_t group)
     }
     else if (current_addr == 0x17 && group == 3)
     {
-        // Grp3: CoolantTemp, OilLevel=OK(label 0), OilTemp, N/A
+        // Grp3: CoolantTemp, OilLevel(k=0x25 MW_B 0-255), OilTemp, N/A
         // K5 formula: a*(b-100)*0.1 → T°C, so b = T + 100 (with a=10)
         int8_t coolant = get_simulated_coolant_temp();
         int8_t oil_temp = get_simulated_oil_temp();
+        uint8_t oil_level = get_simulated_oil_level();
 
         buf[3] = 0x05;
         buf[4] = 10;
         buf[5] = (uint8_t)(coolant + 100); // coolant °C (K5: 10*(b-100)*0.1 = coolant)
-        buf[6] = 0x0E;
+        buf[6] = 0x25;
         buf[7] = 0;
-        buf[8] = 0; // oil level OK (label idx 0)
+        buf[8] = oil_level; // oil level 0-255 (k=0x25 MW_B: just B)
         buf[9] = 0x05;
         buf[10] = 10;
         buf[11] = (uint8_t)(oil_temp + 100); // oil temp °C (K5: 10*(b-100)*0.1 = oil_temp)
