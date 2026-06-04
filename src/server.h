@@ -113,22 +113,26 @@ void load_ecu_def(const ECUDef* ecu_progmem, ECUDef& ecu_ram)
                 ecu_ram.groups[i][j][k] = pgm_read_byte(&ecu_progmem->groups[i][j][k]);
 }
 
-// Measurement value encoding formulas (VCDS/KWP1281 standard):
-// 0x01: rpm   = A * B * 0.2          (A=160, B=rpm/32; max 8160 RPM)
-// 0x02: %     = A * B * 0.002        (placeholder for fuel trim; negative not representable)
-// 0x04: -     = A * |B-127| * 0.01   (K4; A=100 for fuel level: |B-127| = liters)
-//              OR A * B * 0.001       (raw form used for some sensors, e.g. lateral accel)
-// 0x05: °C    = A * B * 0.1 - 100    (A=10, B=°C+100; confirmed against VCDS recording)
-// 0x06: V     = A * B * 0.001        (A=100, B=V*10)
-// 0x07: km/h  = A * B * 0.01         (A=100, B=km/h)
-// 0x0C: bar   = A * B * 0.001        (A=42, B=10 → 0.42 bar)
-// 0x0D: ms    = A * B * 0.001        (A=10, B=ms)
-// 0x0E: -     = raw label lookup; B is the raw index/value VCDS maps via label file
-// 0x10: bits  = B displayed as 8-bit binary string
-// 0x14: Ohm   = A * B * 0.1          (A=10, B=Ohm)
-// 0x17: mbar  = A * B * 0.04         (A=100, B=mbar/4)
-// 0x1A: °     = A * B * 0.1 - 127   (A=10, B=°+127; 0°→B=127)
-// 0x21: -     = A * B * 0.1          (A=10, B=val; for servo positions 0-255)
+// Measurement value encoding — blafusel.de KWP1281 type table (hex = decimal):
+// 0x01=1:  rpm        = 0.2 * A * B              (A=160, B=rpm/32; max 8160 RPM)
+// 0x02=2:  %          = A * 0.002 * B            (throttle/lambda; A=10, B=val)
+// 0x04=4:  fuel/ATDC  = abs(B-127) * 0.01 * A   (K4; A=100 → |B-127| liters or degrees)
+// 0x05=5:  °C         = A * (B-100) * 0.1        (A=10, B=°C+100)
+// 0x06=6:  V          = 0.001 * A * B            (A=100, B=V*10)
+// 0x07=7:  km/h       = 0.01 * A * B             (A=100, B=km/h)
+// 0x08=8:  unitless   = 0.1 * A * B              (counter/position; A=10)
+// 0x09=9:  °(signed)  = (B-127) * 0.02 * A       (steering angle; A=50, B=127→0°)
+// 0x0A=10: COLD/WARM  = B==0 → "COLD" else "WARM"
+// 0x0C=12: Ohm        = 0.001 * A * B            (A=100, B=val)
+// 0x10=16: bits       = B as 8-bit binary string
+// 0x12=18: mbar       = 0.04 * A * B             (A=100, B=mbar/4)
+// 0x16=22: ms         = 0.001 * A * B            (A=10, B=ms)
+// 0x1B=27: °(ign)     = abs(B-128) * 0.01 * A   (ignition timing; A=100, B=128→0°)
+// 0x21=33: %          = 100 * B / A              (A=100, B=val 0-100 → displays B %)
+// 0x24=36: km         = A * 2560 + B * 10        (odometer)
+// 0x2C=44: h:m        = A : B                    (time display)
+// 0x34=52: Nm         = B * 0.02 * A - A         (torque; A=50, B=50→0 Nm)
+// 0x37=55: s          = A * B / 200              (seconds; A=200, B=val)
 
 // cppcheck-suppress unknownMacro
 static const ECUDef ECU_TABLE[] PROGMEM = {
@@ -153,48 +157,48 @@ static const ECUDef ECU_TABLE[] PROGMEM = {
      {
          // Grp1 (dynamic): RPM, Temp, Lambda%, Readiness bits — overridden in code
          {{0x01, 40, 0}, {0x05, 10, 117}, {0x02, 10, 0}, {0x10, 0, 0xB2}},
-         // Grp2: RPM=0, Load=0.0%, TimeCorr=0.0ms, AbsPres=1012.0mbar
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x0D, 10, 0}, {0x17, 100, 253}},
+         // Grp2: RPM(dyn), Load(dyn), InjTiming(dyn), AbsPres(dyn) — all patched at runtime
+         {{0x01, 160, 0}, {0x21, 10, 0}, {0x16, 10, 0}, {0x12, 100, 253}},
          // Grp3 (dynamic): RPM, AbsPres, TBAngle, SteerAngle — overridden in code
-         {{0x01, 40, 0}, {0x17, 100, 254}, {0x21, 1, 55}, {0x1A, 10, 127}},
+         {{0x01, 40, 0}, {0x12, 100, 254}, {0x21, 1, 55}, {0x09, 50, 127}},
          // Grp4: RPM=0, 11.70V, 17.0°C, 14.0°C (K5: b=T+100)
-         {{0x01, 40, 0}, {0x06, 100, 117}, {0x05, 10, 117}, {0x05, 10, 114}},
-         // Grp5: RPM=0, Load=0.0%, Speed=0.0km/h, PartThrottle (label idx 1)
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x07, 100, 0}, {0x0E, 0, 1}},
+         {{0x01, 160, 0}, {0x06, 100, 117}, {0x05, 10, 117}, {0x05, 10, 114}},
+         // Grp5: RPM=0, Load=0.0%, Speed=0.0km/h, PartThrottle
+         {{0x01, 160, 0}, {0x21, 10, 0}, {0x07, 100, 0}, {0x0A, 0, 1}},
          // Grp6: RPM=0, Load=0.0%, 14.0°C, Lambda=-1.0% (placeholder 0) (K5: b=T+100)
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x05, 10, 114}, {0x02, 10, 0}},
+         {{0x01, 160, 0}, {0x21, 10, 0}, {0x05, 10, 114}, {0x02, 10, 0}},
          // Grp7-9: empty → group reading with zero fields
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
-         // Grp10: RPM=0, Load=0.0%, Load=6.0%, SteerAngle=0.0°
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x21, 10, 6}, {0x1A, 10, 127}},
+         // Grp10: RPM=0, Load=0.0%, TDAS1-EPC=6.0%, SteerAngle=0.0°
+         {{0x01, 160, 0}, {0x21, 10, 0}, {0x21, 100, 6}, {0x09, 50, 127}},
          // Grp11: RPM=0, 17.0°C, 14.0°C, SteerAngle=0.0° (K5: b=T+100)
-         {{0x01, 40, 0}, {0x05, 10, 117}, {0x05, 10, 114}, {0x1A, 10, 127}},
+         {{0x01, 160, 0}, {0x05, 10, 117}, {0x05, 10, 114}, {0x09, 50, 127}},
          // Grp12-13: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
-         // Grp14: RPM=0, Load=0.0%, misfire counter=0, recognition=active (idx 0 of
-         // active/inactive)
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}},
+         // Grp14: RPM=0, Load=0.0%, misfire counter=0, recognition=active
+         {{0x01, 160, 0}, {0x21, 10, 0}, {0x08, 10, 0}, {0x0A, 0, 1}},
          // Grp15: misfire cyl1=0, cyl2=0, cyl3=0, recognition=active
-         {{0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}, {0x0E, 0, 0}},
+         {{0x08, 10, 0}, {0x08, 10, 0}, {0x08, 10, 0}, {0x0A, 0, 1}},
          // Grp16: misfire cyl4=0, empty, empty, recognition=active
-         {{0x0E, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x0E, 0, 0}},
+         {{0x08, 10, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x0A, 0, 1}},
          // Grp17: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          // Grp18: RPM=0, RPM=0, Lambda=0.0%, Lambda=0.0%
-         {{0x01, 40, 0}, {0x01, 40, 0}, {0x02, 10, 0}, {0x02, 10, 0}},
+         {{0x01, 160, 0}, {0x01, 160, 0}, {0x02, 10, 0}, {0x02, 10, 0}},
          // Grp19: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
-         // Grp20: SteerAngle=0.0° × 4
-         {{0x1A, 10, 127}, {0x1A, 10, 127}, {0x1A, 10, 127}, {0x1A, 10, 127}},
+         // Grp20: SteerAngle=0.0° × 4 (K9: (B-127)*0.02*A, A=50 → 0°)
+         {{0x09, 50, 127}, {0x09, 50, 127}, {0x09, 50, 127}, {0x09, 50, 127}},
          // Grp21: empty → ACK
          {{0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}, {0x00, 0, 0}},
          // Grp22: RPM=0, Load=0.0%, cyl1 ign.delay=0.0°, cyl2 ign.delay=0.0°
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x1A, 10, 127}, {0x1A, 10, 127}},
+         // K27: abs(B-128)*0.01*A °; A=100, B=128 → 0°
+         {{0x01, 160, 0}, {0x21, 10, 0}, {0x1B, 100, 128}, {0x1B, 100, 128}},
          // Grp23: RPM=0, Load=0.0%, cyl3 ign.delay=0.0°, cyl4 ign.delay=0.0°
-         {{0x01, 40, 0}, {0x21, 10, 0}, {0x1A, 10, 127}, {0x1A, 10, 127}},
+         {{0x01, 160, 0}, {0x21, 10, 0}, {0x1B, 100, 128}, {0x1B, 100, 128}},
      }},
     // 0x03 ABS/ESP — 1C0 907 379
     {0x03,
@@ -732,6 +736,36 @@ uint16_t get_simulated_rpm()
     return (uint16_t)rpm_f;
 }
 
+static uint8_t get_simulated_engine_load()
+{
+    uint16_t rpm = get_simulated_rpm();
+    if (rpm <= 800)
+        return 0;
+    return (uint8_t)((float)(rpm - 800) / (6500.0f - 800.0f) * 100.0f);
+}
+
+// Exhaust gas temp in °C: ~100°C cold, ~520°C at full warm (tracks coolant *6).
+// Encoded with K5 A=40: B = temp/4 + 100.  Max: 40*(255-100)*0.1 = 620°C.
+static uint8_t get_simulated_exhaust_temp_b()
+{
+    int8_t coolant = get_simulated_coolant_temp();
+    int exhaust_c = 100 + (coolant - 20) * 6; // 100°C cold, 520°C warm
+    return (uint8_t)(exhaust_c / 4 + 100);
+}
+
+// O2 sensor voltage B value for K6 A=50 (0.001*50*B V).
+// Cold: stable 0.45V; warm: oscillates 0.1-0.9V at ~2 Hz.
+static uint8_t get_simulated_o2_voltage_b()
+{
+    int8_t coolant = get_simulated_coolant_temp();
+    float v;
+    if (coolant < 50)
+        v = 0.45f;
+    else
+        v = 0.5f + 0.4f * sinf((float)millis() / 250.0f);
+    return (uint8_t)(v * 20.0f); // B = V / (0.001*50) = V*20
+}
+
 bool KWP_send_group_reading(uint8_t group)
 {
     Serial.print("group reading group=");
@@ -880,21 +914,28 @@ bool KWP_send_group_reading(uint8_t group)
     }
     else if (current_addr == 0x01 && group == 3)
     {
-        // Grp3: RPM, AbsPres=1016mbar(static), TBAngle=5.5°(static), SteerAngle=0.0°(static)
+        // Grp3: RPM, AbsPres(dynamic), TBAngle(dynamic), SteerAngle=0.0°
         uint16_t rpm = get_simulated_rpm();
+        uint8_t load = get_simulated_engine_load();
+
+        // MAP: 300 mbar at idle, rises to ~950 mbar at full load
+        uint16_t map_mbar = 300 + (uint16_t)load * 65 / 10; // 300..950
+        // TB angle: 5.5° at idle, opens with load. K9 A=55: (B-127)*1.1 deg
+        float tb_deg = 5.5f + load * 0.55f; // 5.5° idle, ~60° full load
+        uint8_t tb_b = (uint8_t)(127.0f + tb_deg / 1.1f);
 
         buf[3] = 0x01;
         buf[4] = 160;
         buf[5] = (uint8_t)(rpm / 32); // RPM
-        buf[6] = 0x17;
+        buf[6] = 0x12;
         buf[7] = 100;
-        buf[8] = 254; // 1016 mbar (100*254*0.04)
-        buf[9] = 0x21;
-        buf[10] = 1;
-        buf[11] = 55; // 5.5° TB angle (1*55*0.1)
-        buf[12] = 0x1A;
-        buf[13] = 10;
-        buf[14] = 127; // 0.0° steering (10*127*0.1-127)
+        buf[8] = (uint8_t)(map_mbar / 4); // MAP mbar (K18: 0.04*100*B)
+        buf[9] = 0x09;
+        buf[10] = 55;
+        buf[11] = tb_b; // TB angle (K9: (B-127)*0.02*55 deg)
+        buf[12] = 0x09;
+        buf[13] = 50;
+        buf[14] = 127; // 0.0° steering (K9: (127-127)*0.02*50)
     }
     else if (current_addr == 0x03 && group == 1)
     {
@@ -956,6 +997,20 @@ bool KWP_send_group_reading(uint8_t group)
 
         switch (group)
         {
+            case 28: // Knock sensor test (RPM, Load, CoolantTemp, test result)
+                buf[3] = 0x01;
+                buf[4] = 160;
+                buf[5] = rpm_b;
+                buf[6] = 0x21;
+                buf[7] = 100;
+                buf[8] = (uint8_t)((float)(rpm - 800) / (6500.0f - 800.0f) * 100.0f); // load %
+                buf[9] = 0x05;
+                buf[10] = 10;
+                buf[11] = (uint8_t)(coolant + 100); // coolant temp
+                buf[12] = 0x0A;
+                buf[13] = 0;
+                buf[14] = 0; // Test OFF (COLD)
+                break;
             case 30: // O2 sensor status bits: 1xx=heater,x1x=ready,xx1=lambda
                 buf[3] = 0x10;
                 buf[4] = 0;
@@ -978,70 +1033,76 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[5] = 0; // lambda control 0.0%
                 buf[6] = 0x06;
                 buf[7] = 50;
-                buf[8] = 10; // O2 voltage 0.50V (50*10*0.001)
+                buf[8] = get_simulated_o2_voltage_b(); // B1-S1 voltage (oscillating)
                 break;
             case 34: // O2 sensor aging test (B1-S1)
                 buf[3] = 0x01;
                 buf[4] = 160;
                 buf[5] = rpm_b;
-                buf[6] = 0x21;
-                buf[7] = 10;
-                buf[8] = 0; // exhaust temp (cold)
-                buf[9] = 0x21;
-                buf[10] = 10;
+                buf[6] = 0x05;
+                buf[7] = 40;
+                buf[8] = get_simulated_exhaust_temp_b(); // exhaust temp (K5 A=40)
+                buf[9] = 0x37;
+                buf[10] = 200;
                 buf[11] = 0; // dynamic factor 0.0 s
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // Test OFF (Test ON/Test OFF/B1-S1 OK/not OK)
+                buf[14] = 0; // Test OFF (COLD)
                 break;
             case 36: // B1-S2 sensor readiness
                 buf[3] = 0x06;
                 buf[4] = 50;
-                buf[5] = 10; // B1-S2 voltage 0.50V
-                buf[6] = 0x0E;
+                buf[5] = get_simulated_o2_voltage_b(); // B1-S2 voltage (oscillating)
+                buf[6] = 0x0A;
                 buf[7] = 0;
-                buf[8] = 1; // Test OFF (Test ON/Test OFF/B1-S2 not OK/OK)
+                buf[8] = 0; // Test OFF (COLD)
                 break;
             case 37: // B1-S2 diagnostic
                 buf[3] = 0x21;
-                buf[4] = 10;
-                buf[5] = 0; // engine load 0.0%
+                buf[4] = 100;
+                buf[5] = (uint8_t)((float)(rpm - 800) / (6500.0f - 800.0f) * 100.0f); // load %
                 buf[6] = 0x06;
                 buf[7] = 50;
-                buf[8] = 10; // B1-S2 voltage 0.50V
+                buf[8] = get_simulated_o2_voltage_b(); // B1-S2 voltage (oscillating)
                 // pos 3 empty
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // Test OFF
+                buf[14] = 0; // Test OFF (COLD)
                 break;
             case 41: // O2 heater resistance
-                buf[3] = 0x14;
-                buf[4] = 10;
-                buf[5] = 50; // B1-S1: 5.0 Ohm (10*50*0.1)
-                buf[6] = 0x0E;
+                buf[3] = 0x0C;
+                buf[4] = 100;
+                buf[5] = 50; // B1-S1: 5.0 Ohm (K12: 0.001*100*50)
+                buf[6] = 0x0A;
                 buf[7] = 0;
-                buf[8] = 0; // heater condition
-                buf[9] = 0x14;
-                buf[10] = 10;
+                buf[8] = 1; // heater OK (WARM)
+                buf[9] = 0x0C;
+                buf[10] = 100;
                 buf[11] = 50; // B1-S2: 5.0 Ohm
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 0; // heater condition
+                buf[14] = 1; // heater OK (WARM)
                 break;
             case 46: // Catalytic converter efficiency test
+            {
+                // Cat temp lags exhaust: ~80°C cold, ~430°C warm (coolant*5 offset)
+                int8_t cat_coolant = get_simulated_coolant_temp();
+                int cat_c = 80 + (cat_coolant - 20) * 5;
+                uint8_t cat_b = (uint8_t)(cat_c / 4 + 100); // K5 A=40 encoding
                 buf[3] = 0x01;
                 buf[4] = 160;
                 buf[5] = rpm_b;
-                buf[6] = 0x21;
-                buf[7] = 10;
-                buf[8] = 0; // cat temp 0.0 (cold)
+                buf[6] = 0x05;
+                buf[7] = 40;
+                buf[8] = cat_b; // cat temp (K5 A=40)
                 buf[9] = 0x21;
-                buf[10] = 10;
-                buf[11] = 0; // amplitude 0.0%
-                buf[12] = 0x0E;
+                buf[10] = 100;
+                buf[11] = 0; // amplitude 0%
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // Test OFF
+                buf[14] = 0; // Test OFF (COLD)
                 break;
+            }
             case 50: // Speed regulation
                 buf[3] = 0x01;
                 buf[4] = 160;
@@ -1049,26 +1110,26 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[6] = 0x01;
                 buf[7] = 160;
                 buf[8] = 25; // target 800 RPM (160*25*0.2)
-                buf[9] = 0x0E;
+                buf[9] = 0x0A;
                 buf[10] = 0;
-                buf[11] = 1; // A/C-Low (A/C-High/A/C-Low)
-                buf[12] = 0x0E;
+                buf[11] = 0; // A/C-Low (COLD)
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // Compr.OFF (Compr.ON/Compr.OFF)
+                buf[14] = 0; // Compr.OFF (COLD)
                 break;
             case 54: // Throttle and pedal sensors
                 buf[3] = 0x01;
                 buf[4] = 160;
                 buf[5] = rpm_b;
-                buf[6] = 0x0E;
+                buf[6] = 0x0A;
                 buf[7] = 0;
-                buf[8] = 1; // Partial Throttle
+                buf[8] = 1; // Part Throttle (WARM)
                 buf[9] = 0x21;
-                buf[10] = 10;
-                buf[11] = 0; // acc pedal pos 0.0%
+                buf[10] = 100;
+                buf[11] = 0; // acc pedal pos 0%
                 buf[12] = 0x21;
-                buf[13] = 10;
-                buf[14] = 6; // TDAS1 (G187) 6.0%
+                buf[13] = 100;
+                buf[14] = 6; // TDAS1 (G187) 6%
                 break;
             case 55: // Idle regulator
                 buf[3] = 0x01;
@@ -1091,26 +1152,26 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[6] = 0x01;
                 buf[7] = 160;
                 buf[8] = 25; // target 800 RPM (160*25*0.2)
-                buf[9] = 0x21;
-                buf[10] = 10;
-                buf[11] = 0; // idle regulator 0.0 Nm
+                buf[9] = 0x34;
+                buf[10] = 50;
+                buf[11] = 50; // idle regulator 0.0 Nm (K52: 50*0.02*50-50=0)
                 buf[12] = 0x10;
                 buf[13] = 0;
                 buf[14] = 0x00; // load status bits
                 break;
             case 60: // EPC throttle adaptation
                 buf[3] = 0x21;
-                buf[4] = 10;
-                buf[5] = 10; // TDAS1 10.0% (min spec)
+                buf[4] = 100;
+                buf[5] = 10; // TDAS1 10% (K33: 100*10/100)
                 buf[6] = 0x21;
-                buf[7] = 10;
-                buf[8] = 85; // TDAS2 85.0% (max spec, inverse)
-                buf[9] = 0x21;
+                buf[7] = 100;
+                buf[8] = 85; // TDAS2 85% (inverse)
+                buf[9] = 0x08;
                 buf[10] = 10;
-                buf[11] = 12; // steps counter 12 (max = full adapt)
-                buf[12] = 0x0E;
+                buf[11] = 12; // steps counter 12 (K8: 0.1*10*12=12)
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // ADP OK (ADP runs/ADP OK/ADP ERROR)
+                buf[14] = 1; // ADP OK (WARM)
                 break;
             case 61: // EPC system status
                 buf[3] = 0x01;
@@ -1118,41 +1179,41 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[5] = rpm_b;
                 buf[6] = 0x06;
                 buf[7] = 100;
-                buf[8] = 117; // battery 11.70V
+                buf[8] = (rpm > 800) ? 142 : 120; // battery: 14.2V running, 12.0V key-on
                 buf[9] = 0x21;
-                buf[10] = 10;
-                buf[11] = 6; // TDAS1 6.0% (idle position)
+                buf[10] = 100;
+                buf[11] = 6; // TDAS1 6% (idle position)
                 buf[12] = 0x10;
                 buf[13] = 0;
                 buf[14] = 0x00; // load status bits
                 break;
             case 62: // All throttle/pedal sensors
                 buf[3] = 0x21;
-                buf[4] = 10;
-                buf[5] = 6; // TDAS1 (G187) 6.0%
+                buf[4] = 100;
+                buf[5] = 6; // TDAS1 (G187) 6%
                 buf[6] = 0x21;
-                buf[7] = 10;
-                buf[8] = 94; // TDAS2 (G188) 94.0% (inverse)
+                buf[7] = 100;
+                buf[8] = 94; // TDAS2 (G188) 94% (inverse)
                 buf[9] = 0x21;
-                buf[10] = 10;
-                buf[11] = 6; // throttle pos (G79) 6.0%
+                buf[10] = 100;
+                buf[11] = 6; // throttle pos (G79) 6%
                 buf[12] = 0x21;
-                buf[13] = 10;
-                buf[14] = 0; // acc pedal sensor 2 (G185) 0.0%
+                buf[13] = 100;
+                buf[14] = 0; // acc pedal sensor 2 (G185) 0%
                 break;
             case 70: // Evaporative emissions (tank ventilation)
                 buf[3] = 0x21;
-                buf[4] = 10;
-                buf[5] = 0; // TVV opening 0.0%
+                buf[4] = 100;
+                buf[5] = 0; // TVV opening 0%
                 buf[6] = 0x02;
                 buf[7] = 10;
                 buf[8] = 0; // lambda diag 0.0%
-                buf[9] = 0x17;
+                buf[9] = 0x12;
                 buf[10] = 100;
-                buf[11] = 253; // intake pressure 1012 mbar
-                buf[12] = 0x0E;
+                buf[11] = 253; // intake pressure 1012 mbar (K18: 0.04*100*253)
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // Test OFF
+                buf[14] = 0; // Test OFF (COLD)
                 break;
             case 74: // EGR valve adaptation
                 buf[3] = 0x06;
@@ -1164,23 +1225,23 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[9] = 0x06;
                 buf[10] = 100;
                 buf[11] = 3; // actual 0.3V
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // ADP OK (ADP run/ADP OK/ADP ERROR)
+                buf[14] = 1; // ADP OK (WARM)
                 break;
             case 75: // EGR test
                 buf[3] = 0x01;
                 buf[4] = 160;
                 buf[5] = rpm_b;
-                buf[6] = 0x17;
+                buf[6] = 0x12;
                 buf[7] = 100;
-                buf[8] = 253; // intake pressure 1012 mbar
-                buf[9] = 0x17;
+                buf[8] = 253; // intake pressure 1012 mbar (K18: 0.04*100*253)
+                buf[9] = 0x12;
                 buf[10] = 100;
                 buf[11] = 0; // pressure diff 0.0 mbar
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // Test OFF
+                buf[14] = 0; // Test OFF (COLD)
                 break;
             case 99: // OBD compatibility
                 buf[3] = 0x01;
@@ -1192,23 +1253,24 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[9] = 0x02;
                 buf[10] = 10;
                 buf[11] = 0; // O2 control 0.0%
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 0; // ON (ON/OFF idx 0)
+                buf[14] = 1; // O2 control ON (WARM)
                 break;
             case 100: // OBD readiness (VCDS readiness screen reads this group)
             {
                 unsigned long elapsed_s = (millis() - sim_state.start_ms) / 1000;
-                uint8_t elapsed_min = (elapsed_s / 60 > 255) ? 255 : (uint8_t)(elapsed_s / 60);
+                uint8_t h = (uint8_t)(elapsed_s / 3600 > 255 ? 255 : elapsed_s / 3600);
+                uint8_t m = (uint8_t)((elapsed_s % 3600) / 60);
                 buf[3] = 0x10;
                 buf[4] = 0;
                 buf[5] = 0xA5; // readiness bits 10100101
                 buf[6] = 0x05;
                 buf[7] = 10;
                 buf[8] = (uint8_t)(coolant + 100); // coolant temp
-                buf[9] = 0x21;
-                buf[10] = 10;
-                buf[11] = elapsed_min; // minutes since start
+                buf[9] = 0x2C;
+                buf[10] = h;
+                buf[11] = m; // time since start h:m (K44: A:B)
                 buf[12] = 0x10;
                 buf[13] = 0;
                 buf[14] = 0x00; // OBD status flags
@@ -1224,9 +1286,9 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[9] = 0x01;
                 buf[10] = 160;
                 buf[11] = rpm_b; // actual RPM
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // ASR not active
+                buf[14] = 0; // ASR not active (COLD)
                 break;
             case 122: // Transmission torque reduction
                 buf[3] = 0x01;
@@ -1238,9 +1300,9 @@ bool KWP_send_group_reading(uint8_t group)
                 buf[9] = 0x01;
                 buf[10] = 160;
                 buf[11] = rpm_b; // actual RPM
-                buf[12] = 0x0E;
+                buf[12] = 0x0A;
                 buf[13] = 0;
-                buf[14] = 1; // No torque red.
+                buf[14] = 0; // No torque red. (COLD)
                 break;
             case 125: // CAN powertrain bus status
                 buf[3] = 0x21;
@@ -1272,6 +1334,68 @@ bool KWP_send_group_reading(uint8_t group)
         }
     }
     // else: group > num_groups — buf already zeroed, sends 0xE7 with empty fields
+
+    // Post-process all 0x01 groups: make RPM, Speed, and engine Load fields dynamic.
+    // Groups 1 & 3 already have correct values set above — this loop is idempotent for them.
+    // Guard A==10 on K=0x21 avoids overwriting Grp3 throttle-body angle {0x21, 1, 55}.
+    // Only patch groups 1-23; group >23 cases are already handled correctly above.
+    if (current_addr == 0x01 && group <= 23)
+    {
+        uint16_t rpm = get_simulated_rpm();
+        float spd = get_simulated_speed_kmh();
+        uint8_t load = get_simulated_engine_load();
+
+        for (uint8_t s = 0; s < 4; s++)
+        {
+            uint8_t k = 3 + s * 3;
+            switch (buf[k])
+            {
+                case 0x01: // RPM
+                    buf[k + 1] = 160;
+                    buf[k + 2] = (uint8_t)(rpm / 32);
+                    break;
+                case 0x07: // Speed km/h
+                    buf[k + 1] = 100;
+                    buf[k + 2] = (uint8_t)spd;
+                    break;
+                case 0x21: // Load % (K33: 100*B/A). Guard A==10 skips fixed values
+                           // (e.g. Grp3 TB angle A=1, Grp10 TDAS1 A=100).
+                    if (buf[k + 1] == 10)
+                    {
+                        buf[k + 1] = 100; // K33 needs A=100 for correct display
+                        buf[k + 2] = load;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Grp2: MAP and injection timing are dynamic.
+        // Field 3 = injection timing (K22 A=20: 0.001*20*B ms, so B=ms*50).
+        // Field 4 = MAP (K18 A=100: 0.04*100*B mbar, so B=mbar/4).
+        if (group == 2)
+        {
+            uint16_t map_mbar = 300 + (uint16_t)load * 65 / 10;
+            buf[14] = (uint8_t)(map_mbar / 4);
+            float timing_ms = (rpm > 800) ? (2.5f + load * 0.015f) : 0.0f;
+            buf[10] = 20; // A=20 for K22 to cover up to ~5ms
+            buf[11] = (uint8_t)(timing_ms * 50.0f);
+        }
+
+        // Grp4 field 2 = Battery (K6 A=100: 0.001*100*B V → B=V*10).
+        // Field 3 = Coolant Temp (K5, spec 80-110 deg C warm).
+        if (group == 4)
+        {
+            buf[8] = (rpm > 800) ? 142 : 120; // 14.2V running, 12.0V key-on
+            int8_t coolant = get_simulated_coolant_temp();
+            buf[10] = (uint8_t)(coolant + 100);
+        }
+
+        // Grp5 field 4 = load status: COLD=idle, WARM=part throttle when moving.
+        if (group == 5)
+            buf[14] = (spd > 2.0f) ? 1 : 0;
+    }
 
     return KWP_send_block(buf, 16);
 }
