@@ -246,9 +246,7 @@ void startup_animation()
     // }
     g.print("Welcome to", CENTER, rows[3]);
     g.print("OBDServer", CENTER, rows[5]);
-    g.setFont(SmallFont);
-    g.print("Version Alpha", CENTER, rows[6]);
-    g.setFont(BigFont);
+    g.print(APP_VERSION, CENTER, rows[7]);
     g.drawRect(4 + 2, rows[17], 474, rows[17] + 12);
     for (int i = 0; i < 8; i++)
     {
@@ -270,7 +268,7 @@ void startup_animation()
     g.clrScr();
     clearRow(3);
     clearRow(5);
-    clearRow(6);
+    clearRow(7);
     g.setColor(font_color);
 }
 
