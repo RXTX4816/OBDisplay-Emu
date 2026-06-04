@@ -1,6 +1,10 @@
 #include "display.h"
 #include <Arduino.h>
 
+#ifndef APP_VERSION
+#define APP_VERSION "dev"
+#endif
+
 #define PIN_TX 18 // Serial1
 #define PIN_RX 19
 
