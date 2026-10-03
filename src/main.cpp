@@ -2,6 +2,12 @@
 #include "scheduler.h"
 #include "server.h"
 
+// The simulation runs on the real clock in the firmware; tests supply their own.
+uint32_t sim_millis()
+{
+    return millis();
+}
+
 void push_status_msg_type(uint8_t msg_type)
 {
     switch (msg_type)

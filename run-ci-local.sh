@@ -42,7 +42,7 @@ if cppcheck \
     --suppress=syntaxError:src/UTFT.h \
     --inline-suppr \
     --error-exitcode=1 \
-    src/main.cpp src/server.h src/display.h; then
+    src/main.cpp src/server.h src/display.h src/ecu.cpp src/sim.cpp src/groups.cpp; then
     echo -e "${GREEN}✓ Static analysis passed${NC}"
 else
     echo -e "${RED}✗ Static analysis failed${NC}"
