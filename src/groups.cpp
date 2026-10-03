@@ -13,7 +13,7 @@ uint8_t build_group_reading(uint8_t group, uint8_t counter, uint8_t* out)
     if (group == 0)
     {
         // Invalid group: send REFUSE
-        uint8_t refuse_buf[4] = {0x03, counter, KWP_REFUSE, 0x03};
+        const uint8_t refuse_buf[4] = {0x03, counter, KWP_REFUSE, 0x03};
         memcpy(out, refuse_buf, 4);
         return 4;
     }
