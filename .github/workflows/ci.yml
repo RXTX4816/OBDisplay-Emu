@@ -54,7 +54,32 @@ jobs:
         run: pipx install platformio
 
       - name: Build
-        run: pio run -e ATmega2560 2>&1 | tee /tmp/pio_output.txt
+        run: |
+          set -o pipefail
+          pio run -e ATmega2560 2>&1 | tee /tmp/pio_output.txt
 
       - name: Report memory usage
         run: grep -E "^RAM:|^Flash:" /tmp/pio_output.txt || true
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pipx install platformio
+
+      - name: Run native tests
+        run: pio test -e native
+
+      # Same suites on a simulated ATmega2560 (simavr), built like the
+      # firmware: avr-libc float math, 16-bit int and real PROGMEM access.
+      - name: Run AVR simulator tests
+        run: pio test -e mega_sim
