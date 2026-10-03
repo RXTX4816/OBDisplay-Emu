@@ -628,7 +628,7 @@ uint8_t build_group_reading(uint8_t group, uint8_t counter, uint8_t* out)
         {
             buf[8] = (rpm > 800) ? 142 : 120; // 14.2V running, 12.0V key-on
             int8_t coolant = get_simulated_coolant_temp();
-            buf[10] = (uint8_t)(coolant + 100);
+            buf[11] = (uint8_t)(coolant + 100); // B; A stays 10
         }
 
         // Grp5 field 4 = load status: COLD=idle, WARM=part throttle when moving.
